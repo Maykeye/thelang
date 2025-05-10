@@ -1,13 +1,25 @@
-use std::{iter::Peekable, str::Chars};
+use std::{collections::HashMap, fmt::Display, iter::Peekable, str::Chars};
 
-#[derive(Debug, PartialEq, PartialOrd)]
-enum Token {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TokenKind {
     Fn,
     Identifier(String),
     LParen,
     RParen,
     LCurly,
     RCurly,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub pos: Pos,
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, pos: Pos) -> Self {
+        Token { kind, pos }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +32,10 @@ pub struct Pos {
 impl Pos {
     pub fn new(line: usize, col: usize, offset: usize) -> Self {
         Pos { line, col, offset }
+    }
+
+    pub fn report<D: Display>(&self, msg: D) -> String {
+        format!("{}: {}: {}", self.line, self.col, msg)
     }
 }
 impl Default for Pos {
@@ -137,30 +153,31 @@ fn tokenize(text: &str) -> Result<Vec<Token>, String> {
 
     loop {
         skip_ws(&mut cur);
+        let pos0 = cur.pos;
         if cur.peek().is_none() {
             break;
         }
 
         if is_id_start(cur.peekz()) {
             let id = read_keyword_or_identifier(&mut cur);
-            let token = match id.as_str() {
-                "fn" => Token::Fn,
-                _ => Token::Identifier(id),
+            let token_kind = match id.as_str() {
+                "fn" => TokenKind::Fn,
+                _ => TokenKind::Identifier(id),
             };
-            tokens.push(token);
+            tokens.push(Token::new(token_kind, pos0));
             continue;
         }
 
         let gram1 = match cur.peekz() {
-            '(' => Some(Token::LParen),
-            ')' => Some(Token::RParen),
-            '{' => Some(Token::LCurly),
-            '}' => Some(Token::RCurly),
+            '(' => Some(TokenKind::LParen),
+            ')' => Some(TokenKind::RParen),
+            '{' => Some(TokenKind::LCurly),
+            '}' => Some(TokenKind::RCurly),
             _ => None,
         };
 
-        if let Some(token) = gram1 {
-            tokens.push(token);
+        if let Some(kind) = gram1 {
+            tokens.push(Token::new(kind, pos0));
             cur.advance();
             continue;
         }
@@ -171,211 +188,188 @@ fn tokenize(text: &str) -> Result<Vec<Token>, String> {
     return Ok(tokens);
 }
 
+#[derive(Debug)]
+pub struct CompilationUnitTokens {
+    pub functions: HashMap<String, Vec<Token>>,
+}
+
+fn try_get_token_identifier(token: &Token) -> Option<String> {
+    if let TokenKind::Identifier(name) = &token.kind {
+        Some(name.clone())
+    } else {
+        None
+    }
+}
+
+impl CompilationUnitTokens {
+    pub fn new() -> Self {
+        Self {
+            functions: Default::default(),
+        }
+    }
+
+    /// This function goes through blocks that can be nested, eg (()) parenthesis and {{}} curly
+    /// Startin block must be equal to `open`
+    fn feed_forward_nested_blocks(
+        tokens: &[Token],
+        start: usize,
+        open: TokenKind,
+        close: TokenKind,
+    ) -> Option<usize> {
+        let mut i = start;
+        let mut level = 0;
+
+        // Check we are at the beginning of the (possibly nested) block
+        if !tokens.get(i).map_or(false, |t| t.kind == open) {
+            return None;
+        }
+        loop {
+            if i >= tokens.len() {
+                return None;
+            }
+            if tokens[i].kind == open {
+                level += 1;
+            } else if tokens[i].kind == close {
+                level -= 1;
+                if level == 0 {
+                    i += 1;
+                    break;
+                }
+            }
+            i += 1;
+        }
+        Some(i)
+    }
+
+    pub fn from_tokens(tokens: Vec<Token>) -> Result<Self, String> {
+        let mut i = 0;
+        let mut cu = Self::new();
+
+        let err = |p: usize, s: String| -> Result<Self, String> {
+            return Err(tokens[p.min(tokens.len() - 1)].pos.report(format!("{}", s)));
+        };
+
+        while i < tokens.len() {
+            if tokens[i].kind == TokenKind::Fn {
+                if i + 1 >= tokens.len() {
+                    return err(i, format!("function declaration: unexpected end of file"));
+                }
+                let name = match try_get_token_identifier(&tokens[i + 1]) {
+                    Some(name) => name,
+                    None => {
+                        return err(i + 1, format!("function declaration: identifier expected"));
+                    }
+                };
+
+                // Skip args
+                let mut j = i + 2;
+                let ok = tokens.get(j).map_or(false, |t| t.kind == TokenKind::LParen);
+                if !ok {
+                    return err(j, format!("function declaration: invalid argument parsing"));
+                }
+
+                let next_j = Self::feed_forward_nested_blocks(
+                    &tokens,
+                    j,
+                    TokenKind::LParen,
+                    TokenKind::RParen,
+                );
+                j = match next_j {
+                    Some(j) => j,
+                    None => {
+                        return err(j, "unable to feed-forward args block".to_string());
+                    }
+                };
+
+                let ok = tokens.get(j).map_or(false, |t| t.kind == TokenKind::LCurly);
+                if !ok {
+                    return err(j, format!("function declaration: LCurly expected"));
+                }
+
+                let next_j = Self::feed_forward_nested_blocks(
+                    &tokens,
+                    j,
+                    TokenKind::LCurly,
+                    TokenKind::RCurly,
+                );
+                j = match next_j {
+                    Some(j) => j,
+                    None => {
+                        return err(j, "unable to feed-forward code block".to_string());
+                    }
+                };
+
+                let vec = tokens[i..j].iter().map(|t| t.clone()).collect();
+
+                if cu.functions.contains_key(&name) {
+                    return Err(tokens[i]
+                        .pos
+                        .report(format!("function {} already was defined", name)));
+                }
+                cu.functions.insert(name, vec);
+                i = j;
+                continue;
+            }
+            return Err(format!("Invalid token around {:?}", tokens[i].pos));
+        }
+
+        Ok(cu)
+    }
+}
+
 fn main() {
     let source = " fn main() {} ";
     let tokens = tokenize(source).unwrap();
-    println!("{:?}", tokens)
+    let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+    println!("{:?}", comp_unit_tokens)
 }
 
 #[cfg(test)]
-mod test_lexer {
-    use crate::{CharPos, Pos, Token, read_keyword_or_identifier, skip_ws, tokenize};
-
-    #[test]
-    fn test_advance_on_empty() {
-        let src = "";
-        let mut char_pos = CharPos::from_str(src);
-        assert!(char_pos.advance());
-        assert_eq!(char_pos.pos, Pos::new(1, 1, 0));
-        // repeat advance over eof
-        assert!(char_pos.advance());
-        assert_eq!(char_pos.pos, Pos::new(1, 1, 0));
-    }
-
-    #[test]
-    fn test_advance_base() {
-        let src = "1\n2";
-        let mut char_pos = CharPos::from_str(src);
-        assert_eq!(char_pos.pos, Pos::new(1, 1, 0));
-        assert_eq!(char_pos.peekz(), '1');
-        assert!(char_pos.peek().is_some());
-        assert!(!char_pos.advance());
-        assert_eq!(char_pos.pos, Pos::new(1, 2, 1));
-        assert_eq!(char_pos.peekz(), '\n');
-        assert!(char_pos.peek().is_some());
-        assert!(!char_pos.advance());
-        assert_eq!(char_pos.pos, Pos::new(2, 1, 2));
-        assert_eq!(char_pos.peekz(), '2');
-        assert!(char_pos.peek().is_some());
-        assert!(char_pos.advance());
-        assert_eq!(char_pos.pos, Pos::new(2, 2, 3));
-        assert!(char_pos.peek().is_none());
-        assert_eq!(char_pos.peekz(), '\0');
-        // repeat advance over EOF
-        assert!(char_pos.advance());
-        assert_eq!(char_pos.pos, Pos::new(2, 2, 3));
-        assert!(char_pos.peek().is_none());
-        assert_eq!(char_pos.peekz(), '\0');
-    }
-
-    #[test]
-    fn test_skipws_none() {
-        let mut cp_dense = CharPos::from_str("dense");
-        skip_ws(&mut cp_dense);
-        assert_eq!(cp_dense.pos, Pos::new(1, 1, 0));
-        let mut cp_eof = CharPos::from_str("");
-        skip_ws(&mut cp_eof);
-        assert_eq!(cp_eof.pos, Pos::new(1, 1, 0));
-    }
-
-    #[test]
-    fn test_skipws_prefix() {
-        let mut cp_data = CharPos::from_str("  data");
-        skip_ws(&mut cp_data);
-        assert_eq!(cp_data.pos, Pos::new(1, 3, 2));
-    }
-
-    #[test]
-    fn test_singleline_comment() {
-        let mut cp = CharPos::from_str("//3456789");
-        skip_ws(&mut cp);
-        assert_eq!(cp.pos, Pos::new(1, 10, 9));
-        let mut cp = CharPos::from_str("//");
-        skip_ws(&mut cp);
-        assert_eq!(cp.pos, Pos::new(1, 3, 2));
-    }
-
-    #[test]
-    fn test_skipws_combo() {
-        let mut cp = CharPos::from_str(" //1\n //2\n\n//\n d");
-        skip_ws(&mut cp);
-        assert_eq!(cp.pos, Pos::new(5, 2, 15));
-    }
-
-    #[test]
-    fn test_skipws_vs_div() {
-        let mut cp = CharPos::from_str(" / //");
-        skip_ws(&mut cp);
-        assert_eq!(cp.pos, Pos::new(1, 2, 1));
-    }
-
-    #[test]
-    fn test_read_ident_smallest() {
-        let mut cp = CharPos::from_str("A");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "A");
-        assert_eq!(cp.pos, Pos::new(1, 2, 1));
-    }
-
-    #[test]
-    fn test_read_ident() {
-        let mut cp = CharPos::from_str("A12?");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "A12");
-        assert_eq!(cp.pos, Pos::new(1, 4, 3));
-    }
-
-    #[test]
-    fn test_read_ident_on_eol() {
-        let mut cp = CharPos::from_str("Abc\n");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "Abc");
-        assert_eq!(cp.pos, Pos::new(1, 4, 3));
-    }
-
-    #[test]
-    fn test_read_ident_w_dollar() {
-        let mut cp = CharPos::from_str("A$$es\n");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "A$$es");
-        assert_eq!(cp.pos, Pos::new(1, 6, 5));
-    }
-
-    #[test]
-    fn test_cjk_ident() {
-        let mut cp = CharPos::from_str("A１２\n");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "A１２");
-        assert_eq!(cp.pos, Pos::new(1, 4, 3));
-    }
-
-    #[test]
-    fn test_raw_ident() {
-        let mut cp = CharPos::from_str("r#123\n");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "r#123");
-        assert_eq!(cp.pos, Pos::new(1, 6, 5));
-    }
-
-    #[test]
-    fn test_empty_raw_ident() {
-        let mut cp = CharPos::from_str("r#\n");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "r#");
-        assert_eq!(cp.pos, Pos::new(1, 3, 2));
-    }
-
-    #[test]
-    fn test_empty_non_raw_ident() {
-        let mut cp = CharPos::from_str("myr#ident\n");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "myr");
-        assert_eq!(cp.pos, Pos::new(1, 4, 3));
-
-        let mut cp = CharPos::from_str("r");
-        let id = read_keyword_or_identifier(&mut cp);
-        assert_eq!(id, "r");
-        assert_eq!(cp.pos, Pos::new(1, 2, 1));
-    }
-
-    #[test]
-    fn test_tokenize() {
-        let toks = tokenize("fn ({identifier})").unwrap();
-        assert_eq!(
-            toks,
-            [
-                Token::Fn,
-                Token::LParen,
-                Token::LCurly,
-                Token::Identifier("identifier".to_string()),
-                Token::RCurly,
-                Token::RParen,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_err() {
-        let toks = tokenize("▞");
-        assert!(toks.is_err());
-    }
-
-    #[test]
-    fn test_tokenize_empty() {
-        let toks = tokenize("");
-        assert_eq!(toks.unwrap(), []);
-        let toks = tokenize("//comment only");
-        assert_eq!(toks.unwrap(), []);
-        let toks = tokenize("//comments\n//only\n");
-        assert_eq!(toks.unwrap(), []);
-        let toks = tokenize(" ");
-        assert_eq!(toks.unwrap(), []);
-        let toks = tokenize("\n");
-        assert_eq!(toks.unwrap(), []);
-    }
-
-    #[test]
-    fn test_tokenizer_over_raw_identifier() {
-        let toks = tokenize("r r# r#aw");
-        assert_eq!(
-            toks.unwrap(),
-            [
-                Token::Identifier("r".to_string()),
-                Token::Identifier("r#".to_string()),
-                Token::Identifier("r#aw".to_string()),
-            ]
-        );
-    }
-
-    //
+fn toks_to_kinds(toks: &[Token]) -> Vec<TokenKind> {
+    toks.iter().map(|x| x.kind.clone()).collect()
 }
+
+#[cfg(test)]
+mod test_compilation_unit_tokens {
+    use crate::{CompilationUnitTokens, TokenKind, tokenize, toks_to_kinds};
+
+    #[test]
+    fn test_happy_path() {
+        let source = "fn main() {}\nfn foobar(){{}}";
+        let tokens = tokenize(source).unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens).unwrap();
+        let funcs = &comp_unit_tokens.functions;
+        assert_eq!(funcs.len(), 2);
+        let main = toks_to_kinds(&funcs["main"]);
+        assert_eq!(
+            main,
+            [
+                TokenKind::Fn,
+                TokenKind::Identifier("main".to_string()),
+                TokenKind::LParen,
+                TokenKind::RParen,
+                TokenKind::LCurly,
+                TokenKind::RCurly,
+            ]
+        );
+
+        let foobar = toks_to_kinds(&funcs["foobar"]);
+        assert_eq!(
+            foobar,
+            [
+                TokenKind::Fn,
+                TokenKind::Identifier("foobar".to_string()),
+                TokenKind::LParen,
+                TokenKind::RParen,
+                TokenKind::LCurly,
+                TokenKind::LCurly,
+                TokenKind::RCurly,
+                TokenKind::RCurly,
+            ]
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "_tests/test_lexer.rs"]
+mod test_lexer;
