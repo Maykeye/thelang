@@ -368,6 +368,69 @@ mod test_compilation_unit_tokens {
             ]
         );
     }
+
+    #[test]
+    fn test_arg_error() {
+        let tokens = tokenize("fn main((){}").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+
+        let tokens = tokenize("fn main()){}").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+
+        let tokens = tokenize("fn main{}").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+
+        let tokens = tokenize("fn main(").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+    }
+
+    #[test]
+    fn test_body_error() {
+        let tokens = tokenize("fn main(){{}").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+
+        let tokens = tokenize("fn main(){}}").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+
+        let tokens = tokenize("fn main()").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+
+        let tokens = tokenize("fn main(){").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+    }
+
+    #[test]
+    fn test_duplicate_names() {
+        let tokens = tokenize("fn main(){}\nfn okk(){}\nfn main(){}").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+    }
+
+    #[test]
+    fn test_invalid_top_level() {
+        let tokens = tokenize("Sing the strongest song").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+    }
+
+    #[test]
+    fn test_sudden_eof_in_fn() {
+        let tokens = tokenize("fn main").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+
+        assert!(comp_unit_tokens.is_err());
+        let tokens = tokenize("fn").unwrap();
+        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
+        assert!(comp_unit_tokens.is_err());
+    }
 }
 
 #[cfg(test)]
