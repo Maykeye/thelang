@@ -1,4 +1,6 @@
-use crate::{CharPos, Pos, Token, TokenKind, read_keyword_or_identifier, skip_ws, tokenize};
+use crate::Token;
+use crate::tokens::Pos;
+use crate::{CharPos, TokenKind, read_keyword_or_identifier, skip_ws, tokenize};
 
 #[test]
 fn test_advance_on_empty() {
