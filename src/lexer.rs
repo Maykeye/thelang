@@ -1,7 +1,7 @@
 /// Skip whitespace(//comment line included into whitespace)
 use crate::CharPos;
 use crate::{Token, TokenKind};
-pub fn skip_ws<'a>(cur: &mut CharPos<'a>) {
+fn skip_ws<'a>(cur: &mut CharPos<'a>) {
     loop {
         // Skip white-spaces
         while cur.peekz().is_whitespace() {
@@ -35,7 +35,7 @@ fn is_id_body(c: char) -> bool {
 }
 
 /// Read identifier
-pub fn read_keyword_or_identifier<'a>(cur: &mut CharPos<'a>) -> String {
+fn read_keyword_or_identifier<'a>(cur: &mut CharPos<'a>) -> String {
     let mut s = if cur.consume2('r', '#') {
         String::from("r#")
     } else {
@@ -89,3 +89,7 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
 
     return Ok(tokens);
 }
+
+#[cfg(test)]
+#[path = "_tests/test_lexer.rs"]
+mod test_lexer;
