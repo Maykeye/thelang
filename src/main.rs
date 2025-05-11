@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, iter::Peekable, str::Chars};
+use std::{collections::HashMap, fmt::Display, iter::Peekable, ops::Index, str::Chars};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenKind {
@@ -188,48 +188,118 @@ fn tokenize(text: &str) -> Result<Vec<Token>, String> {
     return Ok(tokens);
 }
 
-#[derive(Debug)]
-pub struct CompilationUnitTokens {
-    pub functions: HashMap<String, Vec<Token>>,
+struct Tokens<'a> {
+    tokens: &'a [Token],
 }
 
-fn try_get_token_identifier(token: &Token) -> Option<String> {
-    if let TokenKind::Identifier(name) = &token.kind {
-        Some(name.clone())
-    } else {
-        None
+impl<'a> Tokens<'a> {
+    pub fn new(tokens: &'a [Token]) -> Self {
+        Self { tokens }
     }
-}
-
-impl CompilationUnitTokens {
-    pub fn new() -> Self {
-        Self {
-            functions: Default::default(),
-        }
+    pub fn len(&self) -> usize {
+        self.tokens.len()
     }
 
-    /// This function goes through blocks that can be nested, eg (()) parenthesis and {{}} curly
-    /// Startin block must be equal to `open`
-    fn feed_forward_nested_blocks(
-        tokens: &[Token],
-        start: usize,
-        open: TokenKind,
-        close: TokenKind,
-    ) -> Option<usize> {
-        let mut i = start;
-        let mut level = 0;
+    pub fn kind_matches(&self, i: usize, kind: TokenKind) -> bool {
+        self.tokens.get(i).map_or(false, |t| {
+            std::mem::discriminant(&t.kind) == std::mem::discriminant(&kind)
+        })
+    }
 
-        // Check we are at the beginning of the (possibly nested) block
-        if !tokens.get(i).map_or(false, |t| t.kind == open) {
-            return None;
-        }
-        loop {
-            if i >= tokens.len() {
-                return None;
+    pub fn get_identifier(&self, i: usize) -> Option<String> {
+        self.tokens.get(i).and_then(|t| {
+            if let TokenKind::Identifier(name) = &t.kind {
+                Some(name.clone())
+            } else {
+                None
             }
-            if tokens[i].kind == open {
+        })
+    }
+}
+
+impl<'a> Index<usize> for Tokens<'a> {
+    type Output = Token;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.tokens[index]
+    }
+}
+
+/// Concrete syntax tree: functions
+#[derive(Debug)]
+struct CSTFn {
+    name: String,
+    pos: Pos,
+    body: Vec<CSTNode>,
+}
+
+impl CSTFn {
+    pub fn new(name: String, pos: Pos) -> Self {
+        Self {
+            name,
+            pos,
+            body: vec![],
+        }
+    }
+}
+
+/// Concrete syntax tree nodes
+#[derive(Debug)]
+enum CSTNodeKind {
+    Fn(CSTFn),
+}
+
+#[derive(Debug)]
+struct CSTNode {
+    kind: CSTNodeKind,
+    pos: Pos,
+}
+
+impl CSTNode {
+    fn new(kind: CSTNodeKind, pos: Pos) -> Self {
+        Self { kind, pos }
+    }
+}
+
+#[derive(Debug)]
+struct CST {
+    entries: HashMap<String, CSTNode>,
+}
+
+impl CST {
+    pub fn new() -> Self {
+        CST {
+            entries: Default::default(),
+        }
+    }
+
+    /// Error recovery: if something that must preceed {} had error, find the start of the
+    /// block and its end taking nested blocks into account and skip the content of the block
+    /// We'll treat `foobar() }` as foobar(){}
+    pub fn error_recovery_find_completed_block(toks: &Tokens, mut i: usize) -> usize {
+        // Skip the next block
+        while i < toks.len() {
+            if toks[i].kind == TokenKind::LCurly {
+                i += 1;
+                break;
+            }
+            if toks[i].kind == TokenKind::RCurly {
+                return i + 1;
+            }
+            i += 1;
+        }
+        // no block found
+        if i >= toks.len() {
+            return i;
+        }
+
+        // Block found
+        let mut level = 1;
+        while i < toks.len() {
+            if toks[i].kind == TokenKind::LCurly {
                 level += 1;
-            } else if tokens[i].kind == close {
+            }
+            if toks[i].kind == TokenKind::RCurly {
                 level -= 1;
                 if level == 0 {
                     i += 1;
@@ -238,198 +308,133 @@ impl CompilationUnitTokens {
             }
             i += 1;
         }
-        Some(i)
+        i
     }
 
-    pub fn from_tokens(tokens: Vec<Token>) -> Result<Self, String> {
-        let mut i = 0;
-        let mut cu = Self::new();
+    pub fn parse_fn(toks: &Tokens, index: &mut usize) -> Result<CSTFn, String> {
+        let mut i = *index;
+        let i0 = i;
 
-        let err = |p: usize, s: String| -> Result<Self, String> {
-            return Err(tokens[p.min(tokens.len() - 1)].pos.report(format!("{}", s)));
-        };
-
-        while i < tokens.len() {
-            if tokens[i].kind == TokenKind::Fn {
-                if i + 1 >= tokens.len() {
-                    return err(i, format!("function declaration: unexpected end of file"));
-                }
-                let name = match try_get_token_identifier(&tokens[i + 1]) {
-                    Some(name) => name,
-                    None => {
-                        return err(i + 1, format!("function declaration: identifier expected"));
-                    }
-                };
-
-                // Skip args
-                let mut j = i + 2;
-                let ok = tokens.get(j).map_or(false, |t| t.kind == TokenKind::LParen);
-                if !ok {
-                    return err(j, format!("function declaration: invalid argument parsing"));
-                }
-
-                let next_j = Self::feed_forward_nested_blocks(
-                    &tokens,
-                    j,
-                    TokenKind::LParen,
-                    TokenKind::RParen,
-                );
-                j = match next_j {
-                    Some(j) => j,
-                    None => {
-                        return err(j, "unable to feed-forward args block".to_string());
-                    }
-                };
-
-                let ok = tokens.get(j).map_or(false, |t| t.kind == TokenKind::LCurly);
-                if !ok {
-                    return err(j, format!("function declaration: LCurly expected"));
-                }
-
-                let next_j = Self::feed_forward_nested_blocks(
-                    &tokens,
-                    j,
-                    TokenKind::LCurly,
-                    TokenKind::RCurly,
-                );
-                j = match next_j {
-                    Some(j) => j,
-                    None => {
-                        return err(j, "unable to feed-forward code block".to_string());
-                    }
-                };
-
-                let vec = tokens[i..j].iter().map(|t| t.clone()).collect();
-
-                if cu.functions.contains_key(&name) {
-                    return Err(tokens[i]
-                        .pos
-                        .report(format!("function {} already was defined", name)));
-                }
-                cu.functions.insert(name, vec);
-                i = j;
-                continue;
-            }
-            return Err(format!("Invalid token around {:?}", tokens[i].pos));
+        // FN
+        if !toks.kind_matches(i, TokenKind::Fn) {
+            *index = Self::error_recovery_find_completed_block(toks, i);
+            return Err("function declaration: expectects fn".to_string());
         }
+        i += 1;
 
-        Ok(cu)
+        // <ident>
+        let name = match toks.get_identifier(i) {
+            Some(name) => name,
+            None => {
+                *index = Self::error_recovery_find_completed_block(toks, i);
+                return Err("identifier(function name) expected".to_string());
+            }
+        };
+        i += 1;
+
+        // Args
+        if !toks.kind_matches(i, TokenKind::LParen) {
+            *index = Self::error_recovery_find_completed_block(toks, i);
+            return Err("function declaration: arguments expected".to_string());
+        }
+        i += 1;
+
+        // )
+        if !toks.kind_matches(i, TokenKind::RParen) {
+            *index = Self::error_recovery_find_completed_block(toks, i);
+            return Err("function declaration: end of arguments expected".to_string());
+        }
+        i += 1;
+
+        // {
+        if !toks.kind_matches(i, TokenKind::LCurly) {
+            *index = Self::error_recovery_find_completed_block(toks, i);
+            return Err("function definition: code block expected".to_string());
+        }
+        i += 1;
+
+        // }
+        if !toks.kind_matches(i, TokenKind::RCurly) {
+            *index = Self::error_recovery_find_completed_block(toks, i);
+            return Err("function definition: end of block expected".to_string());
+        }
+        i += 1;
+
+        *index = i;
+        Ok(CSTFn::new(name, toks[i0].pos))
+    }
+
+    fn chkerr_check_name_duplicate(&self, name: &str) -> Option<String> {
+        if let Some(other) = self.entries.get(name) {
+            return Some(format!(
+                "Duplicate of the name {}, previously the name was used at {:?}",
+                name, other.pos
+            ));
+        } else {
+            None
+        }
+    }
+
+    pub fn from_tokens(tokens: &[Token]) -> Result<CST, String> {
+        let toks = Tokens::new(tokens);
+        let mut i = 0;
+        let mut cst = CST::new();
+
+        while i < toks.len() {
+            let i0 = i;
+            match toks[i].kind {
+                TokenKind::Fn => {
+                    let func = Self::parse_fn(&toks, &mut i)?;
+                    if let Some(msg) = cst.chkerr_check_name_duplicate(&func.name) {
+                        return Err(toks[i0].pos.report(msg));
+                    }
+                    cst.entries.insert(
+                        func.name.clone(),
+                        CSTNode::new(CSTNodeKind::Fn(func), toks[i0].pos),
+                    );
+                }
+                _ => {
+                    return Err(toks[i]
+                        .pos
+                        .report(format!("Unexpected top-level token {:?}", toks[i].kind)));
+                }
+            }
+        }
+        Ok(cst)
     }
 }
 
 fn main() {
     let source = " fn main() {} ";
     let tokens = tokenize(source).unwrap();
-    let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-    println!("{:?}", comp_unit_tokens)
+    let cst = CST::from_tokens(&tokens).unwrap();
+    println!("{:?}", cst)
 }
 
 #[cfg(test)]
-fn toks_to_kinds(toks: &[Token]) -> Vec<TokenKind> {
-    toks.iter().map(|x| x.kind.clone()).collect()
-}
-
-#[cfg(test)]
-mod test_compilation_unit_tokens {
-    use crate::{CompilationUnitTokens, TokenKind, tokenize, toks_to_kinds};
+mod test_cst {
+    use crate::{CST, Tokens, tokenize};
 
     #[test]
-    fn test_happy_path() {
-        let source = "fn main() {}\nfn foobar(){{}}";
-        let tokens = tokenize(source).unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens).unwrap();
-        let funcs = &comp_unit_tokens.functions;
-        assert_eq!(funcs.len(), 2);
-        let main = toks_to_kinds(&funcs["main"]);
-        assert_eq!(
-            main,
-            [
-                TokenKind::Fn,
-                TokenKind::Identifier("main".to_string()),
-                TokenKind::LParen,
-                TokenKind::RParen,
-                TokenKind::LCurly,
-                TokenKind::RCurly,
-            ]
-        );
-
-        let foobar = toks_to_kinds(&funcs["foobar"]);
-        assert_eq!(
-            foobar,
-            [
-                TokenKind::Fn,
-                TokenKind::Identifier("foobar".to_string()),
-                TokenKind::LParen,
-                TokenKind::RParen,
-                TokenKind::LCurly,
-                TokenKind::LCurly,
-                TokenKind::RCurly,
-                TokenKind::RCurly,
-            ]
-        );
+    fn test_err_rec1() {
+        let t = tokenize("fn hello world(){}}").unwrap();
+        let t = Tokens::new(&t);
+        assert_eq!(CST::error_recovery_find_completed_block(&t, 2), 7);
+        assert_eq!(CST::error_recovery_find_completed_block(&t, 5), 7);
+        assert_eq!(CST::error_recovery_find_completed_block(&t, 6), 7);
     }
-
     #[test]
-    fn test_arg_error() {
-        let tokens = tokenize("fn main((){}").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-
-        let tokens = tokenize("fn main()){}").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-
-        let tokens = tokenize("fn main{}").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-
-        let tokens = tokenize("fn main(").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
+    fn test_err_rec2() {
+        let t = tokenize("fn hello world()").unwrap();
+        let t = Tokens::new(&t);
+        assert_eq!(CST::error_recovery_find_completed_block(&t, 2), 5);
+        assert_eq!(CST::error_recovery_find_completed_block(&t, 4), 5);
     }
-
     #[test]
-    fn test_body_error() {
-        let tokens = tokenize("fn main(){{}").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-
-        let tokens = tokenize("fn main(){}}").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-
-        let tokens = tokenize("fn main()").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-
-        let tokens = tokenize("fn main(){").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-    }
-
-    #[test]
-    fn test_duplicate_names() {
-        let tokens = tokenize("fn main(){}\nfn okk(){}\nfn main(){}").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-    }
-
-    #[test]
-    fn test_invalid_top_level() {
-        let tokens = tokenize("Sing the strongest song").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
-    }
-
-    #[test]
-    fn test_sudden_eof_in_fn() {
-        let tokens = tokenize("fn main").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-
-        assert!(comp_unit_tokens.is_err());
-        let tokens = tokenize("fn").unwrap();
-        let comp_unit_tokens = CompilationUnitTokens::from_tokens(tokens);
-        assert!(comp_unit_tokens.is_err());
+    fn test_err_rec3() {
+        let t = tokenize("fn hello world()").unwrap();
+        let t = Tokens::new(&t);
+        assert_eq!(CST::error_recovery_find_completed_block(&t, 100), 100);
     }
 }
 
