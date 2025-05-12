@@ -9,6 +9,10 @@ pub struct Arg {
     r#type: Node,
 }
 
+trait GetPos {
+    fn get_pos(&self) -> Pos;
+}
+
 #[derive(Debug)]
 pub struct Fn {
     name: String,
@@ -30,16 +34,22 @@ impl Fn {
     }
 }
 
+impl GetPos for Fn {
+    fn get_pos(&self) -> Pos {
+        self.pos
+    }
+}
+
 /// Concrete syntax tree nodes
 #[derive(Debug)]
-enum NodeKind {
+pub enum NodeKind {
     Fn(Fn),
 }
 
 #[derive(Debug)]
-struct Node {
-    kind: NodeKind,
-    pos: Pos,
+pub struct Node {
+    pub kind: NodeKind,
+    pub pos: Pos,
 }
 
 impl Node {
@@ -50,13 +60,13 @@ impl Node {
 
 #[derive(Debug)]
 pub struct CST {
-    entries: HashMap<String, Node>,
+    pub functions: HashMap<String, Fn>,
 }
 
 impl CST {
     pub fn new() -> Self {
         CST {
-            entries: Default::default(),
+            functions: Default::default(),
         }
     }
 
@@ -98,14 +108,30 @@ impl CST {
         i
     }
 
-    pub fn parse_fn(toks: &Tokens, index: &mut usize) -> Result<Fn, String> {
+    fn chkerr_check_name_duplicate<V: GetPos>(
+        &self,
+        map: &HashMap<String, V>,
+        name: &str,
+    ) -> Option<String> {
+        if let Some(other) = map.get(name) {
+            return Some(format!(
+                "Duplicate of the name {}, previously the name was used at {:?}",
+                name,
+                other.get_pos()
+            ));
+        } else {
+            None
+        }
+    }
+
+    pub fn parse_fn(toks: &Tokens, index: &mut usize) -> Result<Fn, (usize, String)> {
         let mut i = *index;
         let i0 = i;
 
         // FN
         if !toks.kind_eq(i, TokenKind::Fn) {
             *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function declaration: expectects fn".to_string());
+            return Err((i, "function declaration: expected fn".to_string()));
         }
         i += 1;
 
@@ -114,7 +140,7 @@ impl CST {
             Some(name) => name,
             None => {
                 *index = Self::error_recovery_find_completed_block(toks, i);
-                return Err("identifier(function name) expected".to_string());
+                return Err((i, "identifier(function name) expected".to_string()));
             }
         };
         i += 1;
@@ -122,28 +148,31 @@ impl CST {
         // Args
         if !toks.kind_eq(i, TokenKind::LParen) {
             *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function declaration: arguments expected".to_string());
+            return Err((i, "function declaration: arguments expected".to_string()));
         }
         i += 1;
 
         // )
         if !toks.kind_eq(i, TokenKind::RParen) {
             *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function declaration: end of arguments expected".to_string());
+            return Err((
+                i,
+                "function declaration: end of arguments expected".to_string(),
+            ));
         }
         i += 1;
 
         // {
         if !toks.kind_eq(i, TokenKind::LCurly) {
             *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function definition: code block expected".to_string());
+            return Err((i, "function definition: code block expected".to_string()));
         }
         i += 1;
 
         // }
         if !toks.kind_eq(i, TokenKind::RCurly) {
             *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function definition: end of block expected".to_string());
+            return Err((i, "function definition: end of block expected".to_string()));
         }
         i += 1;
 
@@ -151,43 +180,48 @@ impl CST {
         Ok(Fn::new(name, toks[i0].pos))
     }
 
-    fn chkerr_check_name_duplicate(&self, name: &str) -> Option<String> {
-        if let Some(other) = self.entries.get(name) {
-            return Some(format!(
-                "Duplicate of the name {}, previously the name was used at {:?}",
-                name, other.pos
-            ));
-        } else {
-            None
-        }
-    }
-
-    pub fn from_tokens(tokens: &[Token]) -> Result<CST, String> {
+    pub fn from_tokens(tokens: &[Token]) -> Result<CST, (CST, Vec<String>)> {
         let toks = Tokens::new(tokens);
         let mut i = 0;
         let mut cst = CST::new();
+        let mut errors = vec![];
+        let mut add_error = |idx: usize, msg| {
+            errors.push(toks[idx.min(toks.len() - 1)].pos.report(msg));
+        };
 
         while i < toks.len() {
             let i0 = i;
             match toks[i].kind {
                 TokenKind::Fn => {
-                    let func = Self::parse_fn(&toks, &mut i)?;
-                    if let Some(msg) = cst.chkerr_check_name_duplicate(&func.name) {
-                        return Err(toks[i0].pos.report(msg));
+                    let func = match Self::parse_fn(&toks, &mut i) {
+                        Ok(func) => func,
+                        Err((err_pos, err_msg)) => {
+                            assert!(i > i0, "internal error: parser stuck at fn parsing");
+                            add_error(err_pos, err_msg);
+                            continue;
+                        }
+                    };
+                    assert!(i > i0, "internal error: parser stuck at fn parsing");
+
+                    if let Some(msg) = cst.chkerr_check_name_duplicate(&cst.functions, &func.name) {
+                        add_error(i0, msg);
+                        continue;
                     }
-                    cst.entries.insert(
-                        func.name.clone(),
-                        Node::new(NodeKind::Fn(func), toks[i0].pos),
-                    );
+
+                    cst.functions.insert(func.name.clone(), func);
                 }
                 _ => {
-                    return Err(toks[i]
-                        .pos
-                        .report(format!("Unexpected top-level token {:?}", toks[i].kind)));
+                    add_error(i, format!("Unexpected top-level token {:?}", toks[i].kind));
+                    i = Self::error_recovery_find_completed_block(&toks, i);
+                    assert!(i > i0, "internal error: parser stuck at error recovering");
                 }
             }
         }
-        Ok(cst)
+        if errors.is_empty() {
+            Ok(cst)
+        } else {
+            Err((cst, errors))
+        }
     }
 }
 
