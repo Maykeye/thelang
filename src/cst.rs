@@ -15,11 +15,14 @@ trait GetPos {
 
 #[derive(Debug)]
 pub struct Fn {
-    name: String,
-    pos: Pos,
-    body: Vec<Node>,
-    args: Vec<Arg>,
-    return_type: Option<Box<Node>>,
+    pub name: String,
+    pub pos: Pos,
+
+    // should be Some(CodeBlock) for existing code, None for extern
+    // funcs without codes
+    pub body: Option<Box<Node>>,
+    pub args: Vec<Arg>,
+    pub return_type: Option<Box<Node>>,
 }
 
 impl Fn {
@@ -27,7 +30,7 @@ impl Fn {
         Self {
             name,
             pos,
-            body: vec![],
+            body: None,
             args: vec![],
             return_type: None,
         }
@@ -44,6 +47,7 @@ impl GetPos for Fn {
 #[derive(Debug)]
 pub enum NodeKind {
     Fn(Fn),
+    CodeBlock(Vec<Node>),
 }
 
 #[derive(Debug)]
@@ -162,7 +166,10 @@ impl CST {
         }
         i += 1;
 
+        // TODO: externs
+
         // {
+        let code_block_pos = toks[i].pos;
         if !toks.kind_eq(i, TokenKind::LCurly) {
             *index = Self::error_recovery_find_completed_block(toks, i);
             return Err((i, "function definition: code block expected".to_string()));
@@ -177,7 +184,15 @@ impl CST {
         i += 1;
 
         *index = i;
-        Ok(Fn::new(name, toks[i0].pos))
+        let mut func = Fn::new(name, toks[i0].pos);
+
+        let body = Node {
+            kind: NodeKind::CodeBlock(vec![]),
+            pos: code_block_pos,
+        };
+        func.body = Some(Box::new(body));
+
+        Ok(func)
     }
 
     pub fn from_tokens(tokens: &[Token]) -> Result<CST, (CST, Vec<String>)> {
