@@ -12,35 +12,35 @@ struct TpFunctionArg {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct TpFunction {
+pub struct TpFunction {
     args: Vec<TpFunctionArg>,
     return_type: Type,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Type {
+pub enum Type {
     Function(Box<TpFunction>),
     Unit,
 }
 
 #[derive(Debug)]
-enum ExprKind {
+pub enum ExprKind {
     Unit,
     Return(Option<Box<Expr>>),
     CodeBlock(CodeBlock),
 }
 
 #[derive(Debug)]
-struct Expr {
-    kind: ExprKind,
-    pos: Pos,
-    r#type: Option<Type>,
+pub struct Expr {
+    pub kind: ExprKind,
+    pub pos: Pos,
+    pub r#type: Option<Type>,
 }
 
 #[derive(Debug)]
-struct CodeBlock {
-    exprs: Vec<Expr>,
-    pos: Pos,
+pub struct CodeBlock {
+    pub exprs: Vec<Expr>,
+    pub pos: Pos,
 }
 
 impl CodeBlock {
@@ -61,16 +61,16 @@ impl CodeBlock {
 }
 
 #[derive(Debug)]
-struct Function {
-    decl_pos: Pos,
-    name: String,
-    r#type: TpFunction,
-    body: Option<CodeBlock>,
+pub struct Function {
+    pub decl_pos: Pos,
+    pub name: String,
+    pub r#type: TpFunction,
+    pub body: Option<CodeBlock>,
 }
 
 #[derive(Debug)]
 pub struct AST {
-    functions: HashMap<String, Function>,
+    pub functions: HashMap<String, Function>,
 }
 
 impl AST {
