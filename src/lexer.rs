@@ -76,6 +76,7 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
             ')' => Some(TokenKind::RParen),
             '{' => Some(TokenKind::LCurly),
             '}' => Some(TokenKind::RCurly),
+            ';' => Some(TokenKind::Semi),
             _ => None,
         };
 

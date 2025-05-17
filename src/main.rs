@@ -13,6 +13,8 @@ mod cst;
 mod lexer;
 use crate::codegen::CodeGen;
 
+use std::io;
+
 fn main() {
     let source = " fn main() { return; } ";
     let tokens = tokenize(source).unwrap();

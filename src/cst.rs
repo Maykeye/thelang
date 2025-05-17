@@ -20,7 +20,7 @@ pub struct Fn {
 
     // should be Some(CodeBlock) for existing code, None for extern
     // funcs without codes
-    pub body: Option<Box<Node>>,
+    pub body: Option<Box<CodeBlock>>,
     pub args: Vec<Arg>,
     pub return_type: Option<Box<Node>>,
 }
@@ -43,11 +43,27 @@ impl GetPos for Fn {
     }
 }
 
+#[derive(Debug)]
+pub struct CodeBlock {
+    pub nodes: Vec<Node>,
+    pub pos: Pos,
+}
+
+impl CodeBlock {
+    fn new(pos: Pos) -> Self {
+        Self {
+            nodes: Default::default(),
+            pos,
+        }
+    }
+}
+
 /// Concrete syntax tree nodes
 #[derive(Debug)]
 pub enum NodeKind {
     Fn(Fn),
-    CodeBlock(Vec<Node>),
+    CodeBlock(CodeBlock),
+    Return,
 }
 
 #[derive(Debug)]
@@ -128,6 +144,54 @@ impl CST {
         }
     }
 
+    pub fn parse_code_block(
+        toks: &Tokens,
+        index: &mut usize,
+    ) -> Result<CodeBlock, (usize, String)> {
+        let mut i = *index;
+        // {
+        let mut cb = CodeBlock::new(toks[i].pos);
+        if !toks.kind_eq(i, TokenKind::LCurly) {
+            *index = Self::error_recovery_find_completed_block(toks, i);
+            return Err((i, "function definition: code block expected".to_string()));
+        }
+        i += 1;
+
+        while i < toks.len() {
+            match toks[i].kind {
+                TokenKind::RCurly => {
+                    break;
+                }
+                TokenKind::Return => {
+                    i += 1;
+
+                    if toks.kind_eq(i, TokenKind::Semi) {
+                        cb.nodes.push(Node::new(NodeKind::Return, toks[i - 1].pos));
+                        i += 1;
+                        continue;
+                    }
+                    *index = i;
+                    return Err((i, format!("return: expression NYI: {:?}", toks[i].kind)));
+                }
+                _ => {
+                    *index = i;
+                    return Err((
+                        i,
+                        format!("function definition: unknown token: {:?}", toks[i].kind),
+                    ));
+                }
+            }
+        }
+
+        // }
+        if !toks.kind_eq(i, TokenKind::RCurly) {
+            *index = Self::error_recovery_find_completed_block(toks, i);
+            return Err((i, "function definition: end of block expected".to_string()));
+        }
+        i += 1;
+        *index = i;
+        Ok(cb)
+    }
     pub fn parse_fn(toks: &Tokens, index: &mut usize) -> Result<Fn, (usize, String)> {
         let mut i = *index;
         let i0 = i;
@@ -167,30 +231,14 @@ impl CST {
         i += 1;
 
         // TODO: externs
-
-        // {
-        let code_block_pos = toks[i].pos;
-        if !toks.kind_eq(i, TokenKind::LCurly) {
-            *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err((i, "function definition: code block expected".to_string()));
-        }
-        i += 1;
-
-        // }
-        if !toks.kind_eq(i, TokenKind::RCurly) {
-            *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err((i, "function definition: end of block expected".to_string()));
-        }
-        i += 1;
+        let code_block = Self::parse_code_block(toks, &mut i);
+        *index = i;
+        let code_block = code_block?;
 
         *index = i;
         let mut func = Fn::new(name, toks[i0].pos);
 
-        let body = Node {
-            kind: NodeKind::CodeBlock(vec![]),
-            pos: code_block_pos,
-        };
-        func.body = Some(Box::new(body));
+        func.body = Some(Box::new(code_block));
 
         Ok(func)
     }

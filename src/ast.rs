@@ -140,14 +140,11 @@ impl AST {
         return false;
     }
 
-    fn parse_code_block(
-        pos: Pos,
-        cst: &[cst::Node],
-        errors: &mut Vec<String>,
-    ) -> Option<CodeBlock> {
+    fn parse_code_block(cst: &cst::CodeBlock, errors: &mut Vec<String>) -> Option<CodeBlock> {
+        let pos = cst.pos;
         let mut code_block = CodeBlock::new(pos);
         // Empty body = return ()
-        if cst.is_empty() {
+        if cst.nodes.is_empty() {
             let r#return = Expr {
                 kind: ExprKind::Return(None),
                 pos,
@@ -157,7 +154,22 @@ impl AST {
             return Some(code_block);
         }
 
-        unimplemented!("TBD: parse_code_block");
+        for node in cst.nodes.iter() {
+            match node.kind {
+                cst::NodeKind::Return => {
+                    let r#return = Expr {
+                        kind: ExprKind::Return(None),
+                        pos,
+                        r#type: Some(Type::Unit),
+                    };
+                    code_block.exprs.push(r#return);
+                }
+
+                _ => unimplemented!("tbd: parse_code_block"),
+            }
+        }
+
+        return Some(code_block);
     }
 
     fn parse_cst_function_definition<'a>(
@@ -182,21 +194,9 @@ impl AST {
                 }
             };
 
-            let code_block = match &cst_body.kind {
-                cst::NodeKind::CodeBlock(body) => {
-                    match Self::parse_code_block(cst_body.pos, body, errors) {
-                        Some(blk) => blk,
-                        None => {
-                            continue;
-                        }
-                    }
-                }
-                _ => {
-                    let msg = cst_body.pos.report(format!(
-                        "Unexpected function body kind {:?}",
-                        &cst_body.kind
-                    ));
-                    errors.push(msg);
+            let code_block = match Self::parse_code_block(cst_body, errors) {
+                Some(blk) => blk,
+                None => {
                     continue;
                 }
             };
@@ -241,5 +241,5 @@ impl AST {
 }
 
 #[cfg(test)]
-#[path = "_tests/test_ast.rs"] // This path looks like it's for CST tests, not AST tests.
-mod test_ast; // Should probably be test_ast
+#[path = "_tests/test_ast.rs"]
+mod test_ast;

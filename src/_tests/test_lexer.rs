@@ -174,21 +174,14 @@ fn test_empty_non_raw_ident() {
 }
 
 #[test]
-fn test_tokenize() {
-    let toks = tokenize("fn\n({identifier})").unwrap();
-    assert_eq!(toks.len(), 6);
-    assert_eq!(toks[0], Token::new(TokenKind::Fn, Pos::new(1, 1)));
-    assert_eq!(toks[1], Token::new(TokenKind::LParen, Pos::new(2, 1)));
-    assert_eq!(toks[2], Token::new(TokenKind::LCurly, Pos::new(2, 2)));
-    assert_eq!(
-        toks[3],
-        Token::new(
-            TokenKind::Identifier("identifier".to_string()),
-            Pos::new(2, 3)
-        )
-    );
-    assert_eq!(toks[4], Token::new(TokenKind::RCurly, Pos::new(2, 13)));
-    assert_eq!(toks[5], Token::new(TokenKind::RParen, Pos::new(2, 14)));
+fn test_gram1() {
+    let toks = tokenize("\n({});").unwrap();
+    assert_eq!(toks.len(), 5);
+    assert_eq!(toks[0], Token::new(TokenKind::LParen, Pos::new(2, 1)));
+    assert_eq!(toks[1], Token::new(TokenKind::LCurly, Pos::new(2, 2)));
+    assert_eq!(toks[2], Token::new(TokenKind::RCurly, Pos::new(2, 3)));
+    assert_eq!(toks[3], Token::new(TokenKind::RParen, Pos::new(2, 4)));
+    assert_eq!(toks[4], Token::new(TokenKind::Semi, Pos::new(2, 5)));
 }
 
 #[test]
@@ -226,10 +219,9 @@ fn test_tokenizer_over_raw_identifier() {
 
 #[test]
 fn test_tokenize_keywords() {
-    let toks: Vec<_> = tokenize("return")
-        .unwrap()
-        .into_iter()
-        .map(|t| t.kind)
-        .collect();
-    assert_eq!(&toks[0], &TokenKind::Return);
+    let toks: Vec<_> = tokenize("fn\n  return").unwrap().into_iter().collect();
+    assert_eq!(&toks[0].kind, &TokenKind::Fn);
+    assert_eq!(toks[0].pos, Pos::new(1, 1));
+    assert_eq!(&toks[1].kind, &TokenKind::Return);
+    assert_eq!(toks[1].pos, Pos::new(2, 3));
 }

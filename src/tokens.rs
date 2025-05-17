@@ -8,6 +8,7 @@ pub enum TokenKind {
     RParen,
     LCurly,
     RCurly,
+    Semi,
 
     Return,
 }
