@@ -223,3 +223,13 @@ fn test_tokenizer_over_raw_identifier() {
         ]
     );
 }
+
+#[test]
+fn test_tokenize_keywords() {
+    let toks: Vec<_> = tokenize("return")
+        .unwrap()
+        .into_iter()
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(&toks[0], &TokenKind::Return);
+}

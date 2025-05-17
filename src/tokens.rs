@@ -8,6 +8,8 @@ pub enum TokenKind {
     RParen,
     LCurly,
     RCurly,
+
+    Return,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

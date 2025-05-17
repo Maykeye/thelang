@@ -64,6 +64,7 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
             let id = read_keyword_or_identifier(&mut cur);
             let token_kind = match id.as_str() {
                 "fn" => TokenKind::Fn,
+                "return" => TokenKind::Return,
                 _ => TokenKind::Identifier(id),
             };
             tokens.push(Token::new(token_kind, pos0));
