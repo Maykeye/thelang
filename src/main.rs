@@ -1,4 +1,4 @@
-use tokens::{CharPos, Pos, Token, TokenKind};
+use tokens::{CharPos, Token, TokenKind};
 mod ir;
 mod tokens;
 use ast::AST;
