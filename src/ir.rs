@@ -5,20 +5,24 @@ use crate::tokens::Pos;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct IRReg(usize);
+pub struct IRReg(pub usize);
+
+impl IRReg {
+    pub const UNIT: IRReg = IRReg(0);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct IRCodeBlockId(usize);
+pub struct IRCodeBlockId(pub usize);
 
 #[derive(Debug)]
-enum IROp {
+pub enum IROp {
     Return(IRReg),
 }
 
 #[derive(Debug)]
-struct IRCodeBlock {
-    id: IRCodeBlockId,
-    ops: Vec<IROp>,
+pub struct IRCodeBlock {
+    pub id: IRCodeBlockId,
+    pub ops: Vec<IROp>,
 }
 
 impl IRCodeBlock {
@@ -31,10 +35,10 @@ impl IRCodeBlock {
 }
 
 #[derive(Debug)]
-struct IRFunction {
-    pos: Pos,
-    name: String,
-    blocks: Vec<IRCodeBlock>,
+pub struct IRFunction {
+    pub pos: Pos,
+    pub name: String,
+    pub blocks: Vec<IRCodeBlock>,
 }
 
 impl IRFunction {
@@ -76,7 +80,7 @@ impl IRFunction {
 
 #[derive(Debug)]
 pub struct IR {
-    functions: HashMap<String, IRFunction>,
+    pub functions: HashMap<String, IRFunction>,
 }
 
 impl IR {
@@ -84,10 +88,6 @@ impl IR {
         Self {
             functions: Default::default(),
         }
-    }
-
-    fn reg_unit(&self) -> IRReg {
-        IRReg(0)
     }
 
     fn translate_code_block(&mut self, ir_fun: &mut IRFunction, ast_code_block: &ast::CodeBlock) {
@@ -103,7 +103,7 @@ impl IR {
                         Some(_expr) => {
                             unimplemented!("expression parser nyi")
                         }
-                        None => IROp::Return(self.reg_unit()),
+                        None => IROp::Return(IRReg::UNIT),
                     };
                     block.ops.push(ret);
                 }
