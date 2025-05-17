@@ -243,3 +243,7 @@ impl CodeGen for CodeGenNasm64 {
         error.clone()
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/test_codegen_nasm64.rs"]
+mod test_codegen_nasm64;
