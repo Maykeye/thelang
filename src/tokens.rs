@@ -60,12 +60,11 @@ impl<'a> Index<usize> for Tokens<'a> {
 pub struct Pos {
     pub line: usize,
     pub col: usize,
-    pub offset: usize,
 }
 
 impl Pos {
-    pub fn new(line: usize, col: usize, offset: usize) -> Self {
-        Pos { line, col, offset }
+    pub fn new(line: usize, col: usize) -> Self {
+        Pos { line, col }
     }
 
     pub fn report<D: Display>(&self, msg: D) -> String {
@@ -74,7 +73,7 @@ impl Pos {
 }
 impl Default for Pos {
     fn default() -> Self {
-        Pos::new(1, 1, 0)
+        Pos::new(1, 1)
     }
 }
 
@@ -82,12 +81,14 @@ impl Default for Pos {
 pub struct CharPos<'a> {
     pub pos: Pos,
     pub it: Peekable<Chars<'a>>,
+    pub offset: usize,
 }
 impl<'a> CharPos<'a> {
     pub fn from_str(txt: &'a str) -> Self {
         Self {
             pos: Pos::default(),
             it: txt.chars().peekable(),
+            offset: 0,
         }
     }
 
@@ -108,11 +109,11 @@ impl<'a> CharPos<'a> {
             Some('\n') => {
                 self.pos.line += 1;
                 self.pos.col = 1;
-                self.pos.offset += 1;
+                self.offset += 1;
             }
             _ => {
                 self.pos.col += 1;
-                self.pos.offset += 1;
+                self.offset += 1;
             }
         }
         self.it.next();

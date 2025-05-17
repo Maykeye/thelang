@@ -21,7 +21,7 @@ fn test_empty_func_decl() {
 #[test]
 fn test_empty_func_decl_pos() {
     let empty_func = &make_empty_func_ast().functions["empty_func"];
-    assert_eq!(empty_func.decl_pos, Pos::new(2, 1, 1));
+    assert_eq!(empty_func.decl_pos, Pos::new(2, 1));
     let body = empty_func.body.as_ref().unwrap();
     assert_eq!(body.pos.line, 3);
     assert_eq!(body.pos.col, 1);
