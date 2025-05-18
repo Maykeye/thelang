@@ -145,27 +145,31 @@ impl CST {
         }
     }
 
-    pub fn parse_expr(toks: &Tokens, index: &mut usize) -> Result<Node, String> {
+    pub fn parse_expr(toks: &Tokens, mut i: usize) -> (usize, Result<Node, String>) {
         // TBD: RDP over exprs
-        let mut i = *index;
-
         if toks.kind_eq(i, TokenKind::LParen) && toks.kind_eq(i + 1, TokenKind::RParen) {
             i += 2;
-            *index = i;
-            return Ok(Node::new(NodeKind::Unit, toks[i - 2].pos));
+            return (i, Ok(Node::new(NodeKind::Unit, toks[i - 2].pos)));
         }
 
-        // TBD: i may be OoB
-        return Err(format!("unknown expr kind {:?}", toks[i].kind));
+        return (
+            i,
+            Err(format!(
+                "unknown expr kind {:?}",
+                toks.get_nth_kind_description(i)
+            )),
+        );
     }
 
-    pub fn parse_code_block(toks: &Tokens, index: &mut usize) -> Result<CodeBlock, String> {
-        let mut i = *index;
+    pub fn parse_code_block(toks: &Tokens, mut i: usize) -> (usize, Result<CodeBlock, String>) {
         // {
         let mut cb = CodeBlock::new(toks[i].pos);
         if !toks.kind_eq(i, TokenKind::LCurly) {
-            *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function definition: code block expected".to_string());
+            i = Self::error_recovery_find_completed_block(toks, i);
+            return (
+                i,
+                Err("function definition: code block expected".to_string()),
+            );
         }
         i += 1;
 
@@ -199,9 +203,12 @@ impl CST {
                         continue;
                     }
 
-                    let expr = Self::parse_expr(toks, &mut i);
-                    *index = i;
-                    let expr = expr?;
+                    let parsed_expr = Self::parse_expr(toks, i);
+                    i = parsed_expr.0;
+                    let expr = match parsed_expr.1 {
+                        Ok(expr) => expr,
+                        Err(msg) => return (i, Err(msg)),
+                    };
 
                     // return expression has 2 forms
                     // * return <expr> ;
@@ -213,7 +220,7 @@ impl CST {
                             "after `return` expression only acceptable tokens are `;` and `}}`, got {}",
                             toks.get_nth_kind_description(i)
                         );
-                        return Err(toks.get_nth_pos(i).report(msg.to_string()));
+                        return (i, Err(toks.get_nth_pos(i).report(msg.to_string())));
                     }
 
                     cb.nodes
@@ -221,32 +228,36 @@ impl CST {
                     continue;
                 }
                 _ => {
-                    *index = i;
-                    return Err(format!(
-                        "function definition: unknown token: {:?}",
-                        toks[i].kind
-                    ));
+                    return (
+                        i,
+                        Err(format!(
+                            "function definition: unknown token: {:?}",
+                            toks[i].kind
+                        )),
+                    );
                 }
             }
         }
 
         // }
         if !toks.kind_eq(i, TokenKind::RCurly) {
-            *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function definition: end of block expected".to_string());
+            i = Self::error_recovery_find_completed_block(toks, i);
+            return (
+                i,
+                Err("function definition: end of block expected".to_string()),
+            );
         }
-        i += 1;
-        *index = i;
-        Ok(cb)
+        // End of the function definition
+        (i + 1, Ok(cb))
     }
-    pub fn parse_fn(toks: &Tokens, index: &mut usize) -> Result<Fn, String> {
-        let mut i = *index;
+
+    pub fn parse_fn(toks: &Tokens, mut i: usize) -> (usize, Result<Fn, String>) {
         let i0 = i;
 
         // FN
         if !toks.kind_eq(i, TokenKind::Fn) {
-            *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function declaration: expected fn".to_string());
+            i = Self::error_recovery_find_completed_block(toks, i);
+            return (i, Err("function declaration: expected fn".to_string()));
         }
         i += 1;
 
@@ -254,37 +265,47 @@ impl CST {
         let name = match toks.get_identifier(i) {
             Some(name) => name,
             None => {
-                *index = Self::error_recovery_find_completed_block(toks, i);
-                return Err("identifier(function name) expected".to_string());
+                i = Self::error_recovery_find_completed_block(toks, i);
+                return (i, Err("identifier(function name) expected".to_string()));
             }
         };
         i += 1;
 
         // Args
         if !toks.kind_eq(i, TokenKind::LParen) {
-            *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function declaration: arguments expected".to_string());
+            i = Self::error_recovery_find_completed_block(toks, i);
+            return (
+                i,
+                Err("function declaration: arguments expected".to_string()),
+            );
         }
         i += 1;
 
         // )
         if !toks.kind_eq(i, TokenKind::RParen) {
-            *index = Self::error_recovery_find_completed_block(toks, i);
-            return Err("function declaration: end of arguments expected".to_string());
+            i = Self::error_recovery_find_completed_block(toks, i);
+            return (
+                i,
+                Err("function declaration: end of arguments expected".to_string()),
+            );
         }
         i += 1;
 
         // TODO: externs
-        let code_block = Self::parse_code_block(toks, &mut i);
-        *index = i;
-        let code_block = code_block?;
+        let parsed_code_block = Self::parse_code_block(toks, i);
+        i = parsed_code_block.0;
+        let code_block = match parsed_code_block.1 {
+            Ok(block) => block,
+            Err(msg) => {
+                return (i, Err(msg));
+            }
+        };
 
-        *index = i;
         let mut func = Fn::new(name, toks[i0].pos);
 
         func.body = Some(Box::new(code_block));
 
-        Ok(func)
+        (i, Ok(func))
     }
 
     pub fn from_tokens(tokens: &[Token]) -> Result<CST, (CST, Vec<String>)> {
@@ -297,7 +318,9 @@ impl CST {
             let i0 = i;
             match toks[i].kind {
                 TokenKind::Fn => {
-                    let func = match Self::parse_fn(&toks, &mut i) {
+                    let parsed_func = Self::parse_fn(&toks, i);
+                    i = parsed_func.0;
+                    let func = match parsed_func.1 {
                         Ok(func) => func,
                         Err(err_msg) => {
                             assert!(i > i0, "internal error: parser stuck at fn parsing");
