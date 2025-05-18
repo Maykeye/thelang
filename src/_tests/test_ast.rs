@@ -31,6 +31,7 @@ fn test_empty_func_decl_pos() {
 fn test_empty_func_definition() {
     let empty_func = &make_empty_func_ast().functions["empty_func"];
     let body = empty_func.body.as_ref().unwrap();
+    assert_eq!(body.return_type, Some(Type::Unit));
     assert_eq!(body.exprs.len(), 1);
     let ret_expr = match &body.exprs[0].kind {
         ExprKind::Return(ret_val) => ret_val.as_ref(),
@@ -39,4 +40,26 @@ fn test_empty_func_definition() {
         }
     };
     assert!(ret_expr.is_none());
+}
+
+#[test]
+fn test_nesting_return_type() {
+    fn r#impl(txt: &str) {
+        println!("testing {txt}");
+        let toks = tokenize(txt).unwrap();
+        let cst = CST::from_tokens(&toks).unwrap();
+        let ast = AST::from_cst(cst).unwrap();
+        let body = ast.functions.get("nesting").unwrap().body.as_ref().unwrap();
+        assert_eq!(body.return_type, Some(Type::Unit));
+    }
+
+    r#impl("fn nesting()\n{{return ();}}");
+    r#impl("fn nesting()\n{{return ()};}");
+    r#impl("fn nesting()\n{{return ();};}");
+    r#impl("fn nesting()\n{{return}}");
+    r#impl("fn nesting()\n{{return};}");
+    r#impl("fn nesting()\n{{};}");
+    r#impl("fn nesting()\n{{}}");
+    r#impl("fn nesting()\n{{{}}}");
+    r#impl("fn nesting()\n{}");
 }

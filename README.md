@@ -31,10 +31,14 @@ It can create nasm64 linux assembler code for absolutely empty functions
 
 * FUNCTION_DEFINITION::= `fn` IDENTIFIER `(` ARGS_NYI `)` `{` FUNCTION_BODY `}`
 
-* FUNCTION_BODY ::= | `return;`
+* FUNCTION_BODY ::= | { EXPR }
+
+* EXPR ::=  `return` [EXPR] (*type: !*)
+       | `;` (*expr separator, type: unit*)
+       | `()` (*type unit*)
 
 * IDENTIFIER ::=  ( alpha | `_` ) ( alpha | digit | `_` | `$` )
 
-* alpha ::= char.is_alphabetic
+* alpha ::= char.is_alphabetic (*per rust api*)
 
-* digit ::= char.is_numeric
+* digit ::= char.is_numeric (*per rust api*)

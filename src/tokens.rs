@@ -9,7 +9,10 @@ pub enum TokenKind {
     LCurly,
     RCurly,
     Semi,
-
+    /// return <expr> ;
+    /// return ;
+    /// return <expr> }
+    /// return }
     Return,
 }
 
@@ -48,6 +51,21 @@ impl<'a> Tokens<'a> {
                 None
             }
         })
+    }
+
+    pub fn get_nth_kind_description(&self, i: usize) -> String {
+        if i >= self.tokens.len() {
+            "(EOF)".to_string()
+        } else {
+            format!("{:?}", self.tokens[i].kind)
+        }
+    }
+    pub fn get_nth_pos(&self, i: usize) -> Pos {
+        if self.len() == 0 {
+            Pos::new(0, 0)
+        } else {
+            self.tokens[i.min(self.len() - 1)].pos
+        }
     }
 }
 

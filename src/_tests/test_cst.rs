@@ -35,3 +35,15 @@ fn test_several_errors_recovery() {
     assert!(cst.functions.contains_key("fine_too"));
     assert_eq!(err.len(), 3);
 }
+
+#[test]
+fn test_ret() {
+    let t = tokenize("fn hello(){return;}").unwrap();
+    let cst = CST::from_tokens(&t);
+    let t = tokenize("fn hello(){return}").unwrap();
+    let cst = CST::from_tokens(&t);
+    let t = tokenize("fn hello(){return ();}").unwrap();
+    let cst = CST::from_tokens(&t);
+    let t = tokenize("fn hello(){return ()}").unwrap();
+    let cst = CST::from_tokens(&t);
+}

@@ -63,7 +63,8 @@ impl CodeBlock {
 pub enum NodeKind {
     Fn(Fn),
     CodeBlock(CodeBlock),
-    Return,
+    Return(Box<Node>),
+    Unit,
 }
 
 #[derive(Debug)]
@@ -144,6 +145,20 @@ impl CST {
         }
     }
 
+    pub fn parse_expr(toks: &Tokens, index: &mut usize) -> Result<Node, String> {
+        // TBD: RDP over exprs
+        let mut i = *index;
+
+        if toks.kind_eq(i, TokenKind::LParen) && toks.kind_eq(i + 1, TokenKind::RParen) {
+            i += 2;
+            *index = i;
+            return Ok(Node::new(NodeKind::Unit, toks[i - 2].pos));
+        }
+
+        // TBD: i may be OoB
+        return Err(format!("unknown expr kind {:?}", toks[i].kind));
+    }
+
     pub fn parse_code_block(toks: &Tokens, index: &mut usize) -> Result<CodeBlock, String> {
         let mut i = *index;
         // {
@@ -156,19 +171,53 @@ impl CST {
 
         while i < toks.len() {
             match toks[i].kind {
+                TokenKind::Semi => {
+                    // Semicolon is a discarding nop operator. It gets replced by () node.
+                    cb.nodes.push(Node::new(NodeKind::Unit, toks[i].pos));
+                    i += 1;
+                    continue;
+                }
+
                 TokenKind::RCurly => {
                     break;
                 }
+
                 TokenKind::Return => {
+                    let ret_pos = toks[i].pos;
                     i += 1;
 
-                    if toks.kind_eq(i, TokenKind::Semi) {
-                        cb.nodes.push(Node::new(NodeKind::Return, toks[i - 1].pos));
-                        i += 1;
+                    // `return ();` synonyms:
+                    // * return ;
+                    // * return }
+                    if toks.kind_eq(i, TokenKind::Semi) || toks.kind_eq(i, TokenKind::RCurly) {
+                        // We consume `return` and leave parsing of the remaining token to the main
+                        // loop
+                        let unit = Node::new(NodeKind::Unit, ret_pos);
+                        cb.nodes
+                            .push(Node::new(NodeKind::Return(Box::new(unit)), ret_pos));
                         continue;
                     }
+
+                    let expr = Self::parse_expr(toks, &mut i);
                     *index = i;
-                    return Err(format!("return: expression NYI: {:?}", toks[i].kind));
+                    let expr = expr?;
+
+                    // return expression has 2 forms
+                    // * return <expr> ;
+                    // * return <expr> }
+                    // If we parseed the expression, but the next
+                    let ok = toks.kind_eq(i, TokenKind::Semi) || toks.kind_eq(i, TokenKind::RCurly);
+                    if !ok {
+                        let msg = format!(
+                            "after `return` expression only acceptable tokens are `;` and `}}`, got {}",
+                            toks.get_nth_kind_description(i)
+                        );
+                        return Err(toks.get_nth_pos(i).report(msg.to_string()));
+                    }
+
+                    cb.nodes
+                        .push(Node::new(NodeKind::Return(Box::new(expr)), ret_pos));
+                    continue;
                 }
                 _ => {
                     *index = i;
@@ -242,9 +291,6 @@ impl CST {
         let mut i = 0;
         let mut cst = CST::new();
         let mut errors = vec![];
-        let mut add_error = |idx: usize, msg| {
-            errors.push(toks[idx.min(toks.len() - 1)].pos.report(msg));
-        };
 
         while i < toks.len() {
             let i0 = i;
@@ -254,21 +300,25 @@ impl CST {
                         Ok(func) => func,
                         Err(err_msg) => {
                             assert!(i > i0, "internal error: parser stuck at fn parsing");
-                            add_error(i, err_msg);
+                            errors.push(err_msg);
                             continue;
                         }
                     };
                     assert!(i > i0, "internal error: parser stuck at fn parsing");
 
                     if let Some(msg) = cst.chkerr_check_name_duplicate(&cst.functions, &func.name) {
-                        add_error(i0, msg);
+                        errors.push(toks[i0].pos.report(msg));
                         continue;
                     }
 
                     cst.functions.insert(func.name.clone(), func);
                 }
                 _ => {
-                    add_error(i, format!("Unexpected top-level token {:?}", toks[i].kind));
+                    errors.push(
+                        toks[i0]
+                            .pos
+                            .report(format!("Unexpected top-level token {:?}", toks[i].kind)),
+                    );
                     i = Self::error_recovery_find_completed_block(&toks, i);
                     assert!(i > i0, "internal error: parser stuck at error recovering");
                 }

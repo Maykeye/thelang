@@ -5,22 +5,25 @@ use crate::{
     tokens::Pos,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct TpFunctionArg {
     name: Option<String>,
     r#type: Type,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TpFunction {
     args: Vec<TpFunctionArg>,
     return_type: Type,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
     Function(Box<TpFunction>),
+    /// Unit type. Has exactly one instance ()
     Unit,
+    /// `!` is a so called never type, which has no instances
+    Never,
 }
 
 #[derive(Debug)]
@@ -36,11 +39,22 @@ pub struct Expr {
     pub pos: Pos,
     pub r#type: Option<Type>,
 }
+impl Expr {
+    pub fn new(kind: ExprKind, pos: Pos, r#type: Option<Type>) -> Self {
+        Self { kind, pos, r#type }
+    }
+}
 
 #[derive(Debug)]
 pub struct CodeBlock {
+    /// Expressions; we don't have statements
     pub exprs: Vec<Expr>,
+    /// Position of the start of the block
     pub pos: Pos,
+    /// Return type of the block: if block is interrupted by return <expr>, <expr> type is stored
+    /// there. If no interruption found, type is none.
+    /// This is to allow differentiate between `10 + {3}` and `10 + {return 3}`
+    pub return_type: Option<Type>,
 }
 
 impl CodeBlock {
@@ -48,11 +62,8 @@ impl CodeBlock {
         return Self {
             exprs: Default::default(),
             pos,
+            return_type: None,
         };
-    }
-
-    fn r#type(&self) -> Option<&Type> {
-        self.exprs.last().and_then(|e| e.r#type.as_ref())
     }
 
     fn last_expr_pos(&self) -> Pos {
@@ -107,13 +118,16 @@ impl AST {
             }
 
             // Parse return type
-            let return_type = match cst_func.return_type {
+            let func_ret_type = match cst_func.return_type {
                 Some(_) => unimplemented!("TBD: return type NYI"),
                 None => Type::Unit,
             };
 
             // Assign function type to the global symbol
-            let tp_func = TpFunction { args, return_type };
+            let tp_func = TpFunction {
+                args,
+                return_type: func_ret_type,
+            };
             let func = Function {
                 decl_pos: cst_func.pos,
                 name: full_name.clone(),
@@ -140,32 +154,61 @@ impl AST {
         return false;
     }
 
+    fn parse_expr(cst_expr: &cst::Node) -> Expr {
+        match &cst_expr.kind {
+            cst::NodeKind::Unit => Expr::new(ExprKind::Unit, cst_expr.pos, Some(Type::Unit)),
+            _ => unimplemented!("nyi"),
+        }
+    }
+
     fn parse_code_block(cst: &cst::CodeBlock, errors: &mut Vec<String>) -> Option<CodeBlock> {
         let pos = cst.pos;
         let mut code_block = CodeBlock::new(pos);
         // Empty body = return ()
         if cst.nodes.is_empty() {
-            let r#return = Expr {
-                kind: ExprKind::Return(None),
-                pos,
-                r#type: Some(Type::Unit),
-            };
+            let r#return = Expr::new(ExprKind::Return(None), pos, Some(Type::Never));
             code_block.exprs.push(r#return);
+            code_block.return_type = Some(Type::Unit);
             return Some(code_block);
         }
 
+        // Convert CST untyped nodes to AST typed nodes
         for node in cst.nodes.iter() {
-            match node.kind {
-                cst::NodeKind::Return => {
-                    let r#return = Expr {
-                        kind: ExprKind::Return(None),
+            match &node.kind {
+                cst::NodeKind::Return(val) => {
+                    // Parse conversion
+                    let expr = Self::parse_expr(val);
+
+                    // If it's the second return type, make sure they are convertible
+                    assert!(expr.r#type.is_some(), "{}", node.pos.report("unknown type"));
+                    if let Some(current_return_type) = code_block.return_type {
+                        let new_type = expr.r#type.as_ref().unwrap();
+                        // TODO: return or not?
+                        Self::check_type_implicit_conversion(
+                            node.pos,
+                            new_type,
+                            &current_return_type,
+                            errors,
+                        );
+                    }
+
+                    // Return
+                    code_block.return_type = expr.r#type.clone();
+                    let expr = Expr::new(
+                        ExprKind::Return(Some(Box::new(expr))),
                         pos,
-                        r#type: Some(Type::Unit),
-                    };
-                    code_block.exprs.push(r#return);
+                        Some(Type::Never),
+                    );
+                    code_block.exprs.push(expr);
                 }
 
-                _ => unimplemented!("tbd: parse_code_block"),
+                cst::NodeKind::Unit => {
+                    code_block
+                        .exprs
+                        .push(Expr::new(ExprKind::Unit, node.pos, Some(Type::Unit)));
+                }
+
+                _ => unimplemented!("tbd: parse_code_block: {:?}", &node.kind),
             }
         }
 
@@ -194,17 +237,39 @@ impl AST {
                 }
             };
 
-            let code_block = match Self::parse_code_block(cst_body, errors) {
+            let mut code_block = match Self::parse_code_block(cst_body, errors) {
                 Some(blk) => blk,
                 None => {
                     continue;
                 }
             };
 
+            // Resolve return type:
+            // If function body has no explicit return, then take the last-known-expression type.
+            // At this point expression types must be all resolved
+            // Default type is unit, of course
+            if code_block.return_type == None {
+                let tp = match code_block.exprs.last() {
+                    Some(e) => {
+                        let t = match e.r#type.as_ref() {
+                            Some(t) => t.clone(),
+                            None => {
+                                let msg =  code_block.pos.report( "internal error: code block last expression type is not resolved");
+                                panic!("{}", msg)
+                            }
+                        };
+                        t
+                    }
+                    None => Type::Unit,
+                };
+                code_block.return_type = Some(tp);
+            }
+
             // At this point all expresions must be parsed
             // We need to make sure return type can be converted to the function return type
-            match code_block.r#type() {
+            match code_block.return_type.as_ref() {
                 None => {
+                    // TODO: last expr type
                     let msg = code_block
                         .last_expr_pos()
                         .report(format!("internal error: no type for function body found"));

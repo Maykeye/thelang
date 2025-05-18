@@ -90,6 +90,13 @@ impl IR {
         }
     }
 
+    fn translate_expr(&mut self, ir_fun: &mut IRFunction, ast_expr: &ast::Expr) -> IRReg {
+        match &ast_expr.kind {
+            ast::ExprKind::Unit => IRReg::UNIT,
+            _ => unimplemented!("expression parser nyi for {:?}", &ast_expr.kind),
+        }
+    }
+
     fn translate_code_block(&mut self, ir_fun: &mut IRFunction, ast_code_block: &ast::CodeBlock) {
         let mut block = ir_fun.prepare_block();
 
@@ -100,8 +107,9 @@ impl IR {
                 ast::ExprKind::Return(value) => {
                     /*Return an expression(or () if no expression is provided)*/
                     let ret = match value.as_ref() {
-                        Some(_expr) => {
-                            unimplemented!("expression parser nyi")
+                        Some(expr) => {
+                            let expr_reg = self.translate_expr(ir_fun, expr);
+                            IROp::Return(expr_reg)
                         }
                         None => IROp::Return(IRReg::UNIT),
                     };
