@@ -161,11 +161,11 @@ impl AST {
         }
     }
 
-    fn parse_code_block(cst: &cst::CodeBlock, errors: &mut Vec<String>) -> Option<CodeBlock> {
-        let pos = cst.pos;
+    fn parse_code_block(cst_cb: &cst::CodeBlock, errors: &mut Vec<String>) -> Option<CodeBlock> {
+        let pos = cst_cb.pos;
         let mut code_block = CodeBlock::new(pos);
         // Empty body = return ()
-        if cst.nodes.is_empty() {
+        if cst_cb.nodes.is_empty() {
             let r#return = Expr::new(ExprKind::Return(None), pos, Some(Type::Never));
             code_block.exprs.push(r#return);
             code_block.return_type = Some(Type::Unit);
@@ -173,7 +173,7 @@ impl AST {
         }
 
         // Convert CST untyped nodes to AST typed nodes
-        for node in cst.nodes.iter() {
+        for node in cst_cb.nodes.iter() {
             match &node.kind {
                 cst::NodeKind::Return(val) => {
                     // Parse conversion

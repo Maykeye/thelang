@@ -173,6 +173,7 @@ impl CST {
             match toks[i].kind {
                 TokenKind::Semi => {
                     // Semicolon is a discarding nop operator. It gets replced by () node.
+                    // TODO: consume not doing it unless it's the end of the block
                     cb.nodes.push(Node::new(NodeKind::Unit, toks[i].pos));
                     i += 1;
                     continue;

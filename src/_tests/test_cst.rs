@@ -1,3 +1,4 @@
+use crate::cst::NodeKind;
 use crate::tokens::Tokens;
 use crate::{CST, tokenize};
 
@@ -38,12 +39,23 @@ fn test_several_errors_recovery() {
 
 #[test]
 fn test_ret() {
-    let t = tokenize("fn hello(){return;}").unwrap();
-    let cst = CST::from_tokens(&t);
-    let t = tokenize("fn hello(){return}").unwrap();
-    let cst = CST::from_tokens(&t);
-    let t = tokenize("fn hello(){return ();}").unwrap();
-    let cst = CST::from_tokens(&t);
-    let t = tokenize("fn hello(){return ()}").unwrap();
-    let cst = CST::from_tokens(&t);
+    fn r#impl(text: &str) {
+        println!("{text}");
+        let t = tokenize(text).unwrap();
+        let cst = CST::from_tokens(&t).unwrap();
+        let func = cst.functions.get("hello").unwrap();
+        let body = func.body.as_ref().unwrap();
+        let node0 = &body.nodes[0].kind;
+
+        match node0 {
+            NodeKind::Return(node) => {
+                assert!(matches!(node.kind, NodeKind::Unit));
+            }
+            _ => panic!("return expected"),
+        };
+    }
+    r#impl("fn hello(){return;}");
+    r#impl("fn hello(){return}");
+    r#impl("fn hello(){return ();}");
+    r#impl("fn hello(){return ()}");
 }

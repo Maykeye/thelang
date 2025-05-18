@@ -2,13 +2,20 @@ use std::{fmt::Display, iter::Peekable, ops::Index, str::Chars};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenKind {
+    /// Function keyword
     Fn,
+    /// Identifier of anything
     Identifier(String),
+    /// Parenthisis
     LParen,
     RParen,
+    /// Code block start
     LCurly,
+    /// Code block ends
     RCurly,
+    /// Token separator
     Semi,
+    /// Return keyword. Grammar is
     /// return <expr> ;
     /// return ;
     /// return <expr> }
