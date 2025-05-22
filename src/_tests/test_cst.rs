@@ -92,6 +92,23 @@ fn test_nested_blocks() {
     let cst = cst_fom_text("fn fun(){{};{{}}}");
     let body = cst.functions.get("fun").unwrap();
     let body = body.body.as_ref().unwrap().as_ref();
-    println!("{:?}", body);
     assert_eq!(body.nodes.len(), 2);
+    match &body.nodes[0].kind {
+        NodeKind::CodeBlock(nested) => {
+            assert_eq!(nested.nodes.len(), 0);
+        }
+        _ => panic!(">> unexpected node kind {:?}", &body.nodes[0]),
+    }
+    match &body.nodes[1].kind {
+        NodeKind::CodeBlock(nested) => {
+            assert_eq!(nested.nodes.len(), 1);
+            match &nested.nodes[0].kind {
+                NodeKind::CodeBlock(nested) => {
+                    assert_eq!(nested.nodes.len(), 0);
+                }
+                _ => panic!(">> unexpected node kind {:?}", &body.nodes[0]),
+            };
+        }
+        _ => panic!(">> unexpected node kind {:?}", &body.nodes[0]),
+    }
 }
