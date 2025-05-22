@@ -53,13 +53,15 @@ fn test_nesting_return_type() {
         assert_eq!(body.return_type, Some(Type::Unit));
     }
 
+    r#impl("fn nesting()\n{{}}");
+    r#impl("fn nesting()\n{{()}}");
+    r#impl("fn nesting()\n{{()};}");
+    r#impl("fn nesting()\n{{return ();};}");
     r#impl("fn nesting()\n{{return ();}}");
     r#impl("fn nesting()\n{{return ()};}");
-    r#impl("fn nesting()\n{{return ();};}");
-    r#impl("fn nesting()\n{{return}}");
     r#impl("fn nesting()\n{{return};}");
-    r#impl("fn nesting()\n{{};}");
-    r#impl("fn nesting()\n{{}}");
+    r#impl("fn nesting()\n{{return}}");
     r#impl("fn nesting()\n{{{}}}");
+    r#impl("fn nesting()\n{{};}");
     r#impl("fn nesting()\n{}");
 }
