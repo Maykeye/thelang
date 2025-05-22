@@ -194,6 +194,7 @@ impl CodeGenNasm64 {
             ir_func.name, code_block_id.0
         ));
         self.code.cb_label(code_block_id);
+        let mut last_ins_br = false;
 
         for op in &code_block.ops {
             match op {
@@ -205,16 +206,26 @@ impl CodeGenNasm64 {
                         IRReg::UNIT,
                         "currently only () register is supported"
                     );
-                    self.code.ret()
+                    self.code.ret();
+                    last_ins_br = true;
+                }
+                IROp::LocalCall(other_code_block_id) => {
+                    self.code.call(Operand::CodeBlock(*other_code_block_id));
+                    last_ins_br = false;
                 }
             }
+        }
+        if !last_ins_br {
+            self.code.ret();
         }
     }
 
     fn write_function_def(&mut self, ir: &IR, ir_func: &IRFunction) {
         self.code.label(&ir_func.name);
-        self.write_code_block(ir, ir_func, IRCodeBlockId(0));
-        self.code.nl();
+        for i in 0..ir_func.blocks.len() {
+            self.write_code_block(ir, ir_func, IRCodeBlockId(i));
+            self.code.nl();
+        }
     }
 }
 

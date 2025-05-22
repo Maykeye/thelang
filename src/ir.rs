@@ -16,6 +16,10 @@ pub struct IRCodeBlockId(pub usize);
 
 #[derive(Debug)]
 pub enum IROp {
+    /// Call a code block withtin a function,
+    /// after the call is complete, PC is set to the next instruction after the call
+    LocalCall(IRCodeBlockId),
+    /// Return a register from the function
     Return(IRReg),
 }
 
@@ -64,7 +68,7 @@ impl IRFunction {
         work
     }
 
-    fn insert_block(&mut self, block: IRCodeBlock) {
+    fn insert_block(&mut self, block: IRCodeBlock) -> IRCodeBlockId {
         // Blocks should be prepared via `prepare_block`.
         // `prepare_block` invariant is its.id is always in bounds of `blocks` list
         if block.id.0 >= self.blocks.len() {
@@ -73,8 +77,9 @@ impl IRFunction {
                 block.id, block
             );
         }
-        let idx = block.id.0;
-        self.blocks[idx] = block;
+        let id = block.id;
+        self.blocks[id.0] = block;
+        id
     }
 }
 
@@ -97,7 +102,11 @@ impl IR {
         }
     }
 
-    fn translate_code_block(&mut self, ir_fun: &mut IRFunction, ast_code_block: &ast::CodeBlock) {
+    fn translate_code_block(
+        &mut self,
+        ir_fun: &mut IRFunction,
+        ast_code_block: &ast::CodeBlock,
+    ) -> IRCodeBlockId {
         let mut block = ir_fun.prepare_block();
 
         for x in &ast_code_block.exprs {
@@ -123,16 +132,17 @@ impl IR {
                     // }
                     // It may have on AST level which inserts drops for affine types, but
                     // on IR level we just translate it into series of branches
-                    self.translate_code_block(ir_fun, nested_block);
-                    unimplemented!("TBD: jumps to and from internal blocks")
+
+                    let blk = self.translate_code_block(ir_fun, nested_block);
+                    block.ops.push(IROp::LocalCall(blk));
                 }
                 ast::ExprKind::Unit => {
-                    // Nop on top-expr(stmt) level is essentially nop.
+                    // Unit() on top-expr(stmt) level is essentially nop.
                 }
             }
         }
 
-        ir_fun.insert_block(block);
+        ir_fun.insert_block(block)
     }
 
     fn translate_ast_func(&mut self, ast_func: &ast::Function) -> Result<IRFunction, String> {
