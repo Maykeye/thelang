@@ -29,13 +29,13 @@ It can create nasm64 linux assembler code for absolutely empty functions
 
 ## Syntax
 
-* FUNCTION_DEFINITION::= `fn` IDENTIFIER `(` ARGS_NYI `)` `{` FUNCTION_BODY `}`
+* FUNCTION_DEFINITION::= `fn` IDENTIFIER `(` ARGS_NYI `)` `{` CODE_BLOCK `}`
 
-* FUNCTION_BODY ::= | { EXPR }
+* CODE_BLOCK ::= {`;`} [EXPR {`;` {`;`} EXPR} {`;`}]
 
-* EXPR ::=  `return` [EXPR] (*type: !*)
-       | `;` (*expr separator, type: unit*)
-       | `()` (*type unit*)
+* EXPR ::=  `return` [EXPR] (*type: !*) 
+       | `()` (*type unit*) 
+       | `{` CODE_BLOCK `}`
 
 * IDENTIFIER ::=  ( alpha | `_` ) ( alpha | digit | `_` | `$` )
 

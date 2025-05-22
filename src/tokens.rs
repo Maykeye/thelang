@@ -74,6 +74,10 @@ impl<'a> Tokens<'a> {
             self.tokens[i.min(self.len() - 1)].pos
         }
     }
+
+    pub fn inner(&self) -> &'a [Token] {
+        &self.tokens
+    }
 }
 
 impl<'a> Index<usize> for Tokens<'a> {

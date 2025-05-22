@@ -175,18 +175,39 @@ impl CST {
 
         while i < toks.len() {
             match toks[i].kind {
+                // Expression separator. For now it's being replaced with (unit) instance
                 TokenKind::Semi => {
-                    // Semicolon is a discarding nop operator. It gets replced by () node.
-                    // TODO: consume not doing it unless it's the end of the block
-                    cb.nodes.push(Node::new(NodeKind::Unit, toks[i].pos));
+                    // Semicolon is a discarding nop operator. It gets replced by () node,
+                    // but if and only if it's the last node before RCurly
+                    if toks.kind_eq(i + 1, TokenKind::RCurly) {
+                        cb.nodes.push(Node::new(NodeKind::Unit, toks[i].pos));
+                    }
                     i += 1;
                     continue;
                 }
 
+                // LCurly. Nested code-block.
+                TokenKind::LCurly => {
+                    let start_pos = toks[i].pos;
+                    let (next_i, result) = Self::parse_code_block(toks, i);
+                    i = next_i;
+                    let nested_block = match result {
+                        Ok(block) => block,
+                        Err(err) => {
+                            i = Self::error_recovery_find_completed_block(toks, next_i);
+                            return (i, Err(err));
+                        }
+                    };
+                    cb.nodes
+                        .push(Node::new(NodeKind::CodeBlock(nested_block), start_pos));
+                }
+
+                // RCurly. End of the code block
                 TokenKind::RCurly => {
                     break;
                 }
 
+                // Return. Expression that forces return from the function
                 TokenKind::Return => {
                     let ret_pos = toks[i].pos;
                     i += 1;
@@ -227,13 +248,16 @@ impl CST {
                         .push(Node::new(NodeKind::Return(Box::new(expr)), ret_pos));
                     continue;
                 }
+
                 _ => {
+                    // TODO: skip to the next semicolon?
+                    let next_i = Self::error_recovery_find_completed_block(toks, i);
                     return (
-                        i,
-                        Err(format!(
-                            "function definition: unknown token: {:?}",
+                        next_i,
+                        Err(toks.get_nth_pos(i).report(format!(
+                            "function definition: unsupported token: {:?}",
                             toks[i].kind
-                        )),
+                        ))),
                     );
                 }
             }

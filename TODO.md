@@ -15,8 +15,11 @@
 
 ## Much later goals
 * overshadowing local variables (`let a = 1; let a = 1`)
-* fix `;` to be a separator and not a unit expression
 * Other types
 * Memory allocation
 * Generics
 * Modules where function names can "conflict" with function names with other modules (eg `foo::a` and `boo::a`)
+
+## Much much much later
+
+* We need syntax for destructive binding for `let` eg `let mut i=10; let (existing i, new j) = (10, 20)`

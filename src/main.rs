@@ -13,10 +13,8 @@ mod cst;
 mod lexer;
 use crate::codegen::CodeGen;
 
-use std::io;
-
 fn main() {
-    let source = " fn main() { return (); } ";
+    let source = " fn main() { {} } ";
     let tokens = tokenize(source).unwrap();
     let cst = CST::from_tokens(&tokens).unwrap();
     let ast = AST::from_cst(cst).unwrap();
