@@ -2,7 +2,8 @@
 
 ## Immediate
 
-* Fix `ast::test_ast::test_nesting_return_type`
+* Implement IR for nesting code blocks
+* Fix `ast::test_ast::test_nesting_return_type_w_unit_type`
 
 ## Delayed goals
 * Add lean4 backend

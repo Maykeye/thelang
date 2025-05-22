@@ -183,7 +183,7 @@ impl AST {
                     assert!(expr.r#type.is_some(), "{}", node.pos.report("unknown type"));
                     if let Some(current_return_type) = code_block.return_type {
                         let new_type = expr.r#type.as_ref().unwrap();
-                        // TODO: return or not?
+                        // TODO: return or panic of expt type not yet defined?
                         Self::check_type_implicit_conversion(
                             node.pos,
                             new_type,
@@ -206,6 +206,36 @@ impl AST {
                     code_block
                         .exprs
                         .push(Expr::new(ExprKind::Unit, node.pos, Some(Type::Unit)));
+                }
+
+                cst::NodeKind::CodeBlock(cst_nested_cb) => {
+                    let new_cb = match Self::parse_code_block(cst_nested_cb, errors) {
+                        Some(cb) => cb,
+                        None => return None,
+                    };
+
+                    let last_pos = new_cb.last_expr_pos();
+                    let block_type = new_cb.exprs.last().map_or(Type::Unit, |t| {
+                        t.r#type.as_ref().expect("Internal error").clone()
+                    });
+
+                    let abort = match (&code_block.return_type, &new_cb.return_type) {
+                        (Some(old_type), Some(new_type)) => !Self::check_type_implicit_conversion(
+                            last_pos, &new_type, &old_type, errors,
+                        ),
+                        (None, Some(new_type)) => {
+                            code_block.return_type = Some(new_type.clone());
+                            false
+                        }
+                        _ => false,
+                    };
+
+                    if abort {
+                        return None;
+                    }
+
+                    let new_expr = Expr::new(ExprKind::CodeBlock(new_cb), pos, Some(block_type));
+                    code_block.exprs.push(new_expr);
                 }
 
                 _ => unimplemented!("tbd: parse_code_block: {:?}", &node.kind),

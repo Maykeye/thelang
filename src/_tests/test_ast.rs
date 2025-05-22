@@ -42,26 +42,31 @@ fn test_empty_func_definition() {
     assert!(ret_expr.is_none());
 }
 
+fn impl_nesting_return_type(txt: &str) {
+    println!("testing {txt}");
+    let toks = tokenize(txt).unwrap();
+    let cst = CST::from_tokens(&toks).unwrap();
+    let ast = AST::from_cst(cst).unwrap();
+    let body = ast.functions.get("nesting").unwrap().body.as_ref().unwrap();
+    assert_eq!(body.return_type, Some(Type::Unit));
+}
 #[test]
 fn test_nesting_return_type() {
-    fn r#impl(txt: &str) {
-        println!("testing {txt}");
-        let toks = tokenize(txt).unwrap();
-        let cst = CST::from_tokens(&toks).unwrap();
-        let ast = AST::from_cst(cst).unwrap();
-        let body = ast.functions.get("nesting").unwrap().body.as_ref().unwrap();
-        assert_eq!(body.return_type, Some(Type::Unit));
-    }
+    impl_nesting_return_type("fn nesting()\n{{}}");
+    impl_nesting_return_type("fn nesting()\n{{return};}");
+    impl_nesting_return_type("fn nesting()\n{{return}}");
+    impl_nesting_return_type("fn nesting()\n{{{}}}");
+    impl_nesting_return_type("fn nesting()\n{{};}");
+    impl_nesting_return_type("fn nesting()\n{}");
+}
 
-    r#impl("fn nesting()\n{{}}");
-    r#impl("fn nesting()\n{{()}}");
-    r#impl("fn nesting()\n{{()};}");
-    r#impl("fn nesting()\n{{return ();};}");
-    r#impl("fn nesting()\n{{return ();}}");
-    r#impl("fn nesting()\n{{return ()};}");
-    r#impl("fn nesting()\n{{return};}");
-    r#impl("fn nesting()\n{{return}}");
-    r#impl("fn nesting()\n{{{}}}");
-    r#impl("fn nesting()\n{{};}");
-    r#impl("fn nesting()\n{}");
+#[test]
+fn test_nesting_return_type_w_unit_type() {
+    impl_nesting_return_type("fn nesting()\n{()}");
+    impl_nesting_return_type("fn nesting()\n{{()};}");
+    impl_nesting_return_type("fn nesting()\n{{()}}");
+    impl_nesting_return_type("fn nesting()\n{{return ();};}");
+    impl_nesting_return_type("fn nesting()\n{{return ()};}");
+    impl_nesting_return_type("fn nesting()\n{{return ()}}");
+    impl_nesting_return_type("fn nesting()\n{{{()}}}");
 }
