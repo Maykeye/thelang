@@ -161,6 +161,34 @@ impl CST {
         );
     }
 
+    // Check expression separator.
+    // If token doesn't terminate the expression(which is semicolon or RCurly),
+    // add an error
+    pub fn check_expression_separator(toks: &Tokens, index: &mut usize) -> Result<(), String> {
+        let mut i = *index;
+        // now we need to check separator: `;` or `}`
+        if toks.kind_eq(i, TokenKind::Semi) || toks.kind_eq(i, TokenKind::RCurly) {
+            return Ok(());
+        }
+        let msg = format!(
+            "after expression only acceptable tokens are `;` and `}}`, got {}",
+            toks.get_nth_kind_description(i)
+        );
+
+        while i < toks.len() {
+            match toks[i].kind {
+                TokenKind::Semi | TokenKind::RCurly => {
+                    break;
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+        *index = i;
+        return Err(msg);
+    }
+
     pub fn parse_code_block(toks: &Tokens, mut i: usize) -> (usize, Result<CodeBlock, String>) {
         // {
         let mut cb = CodeBlock::new(toks[i].pos);
@@ -231,22 +259,30 @@ impl CST {
                         Err(msg) => return (i, Err(msg)),
                     };
 
-                    // return expression has 2 forms
-                    // * return <expr> ;
-                    // * return <expr> }
-                    // If we parseed the expression, but the next
-                    let ok = toks.kind_eq(i, TokenKind::Semi) || toks.kind_eq(i, TokenKind::RCurly);
-                    if !ok {
-                        let msg = format!(
-                            "after `return` expression only acceptable tokens are `;` and `}}`, got {}",
-                            toks.get_nth_kind_description(i)
-                        );
-                        return (i, Err(toks.get_nth_pos(i).report(msg.to_string())));
+                    // TODO: adapt this function to use vec[string]
+                    if let Err(msg) = Self::check_expression_separator(toks, &mut i) {
+                        return (i, Err(msg));
                     }
 
                     cb.nodes
                         .push(Node::new(NodeKind::Return(Box::new(expr)), ret_pos));
                     continue;
+                }
+
+                // LParen. Start of "normal" expression
+                TokenKind::LParen => {
+                    let parsed_expr = Self::parse_expr(toks, i);
+                    i = parsed_expr.0;
+                    let expr = match parsed_expr.1 {
+                        Ok(expr) => expr,
+                        Err(msg) => return (i, Err(msg)),
+                    };
+                    cb.nodes.push(expr);
+
+                    // TODO: adapt this function to use vec[string]
+                    if let Err(msg) = Self::check_expression_separator(toks, &mut i) {
+                        return (i, Err(msg));
+                    }
                 }
 
                 _ => {
