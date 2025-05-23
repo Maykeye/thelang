@@ -198,7 +198,7 @@ impl CodeGenNasm64 {
 
         for op in &code_block.ops {
             match op {
-                IROp::Return(irreg) => {
+                IROp::Return { value: irreg } => {
                     // TODO: once we'll implement virtual registers, we'll do
                     // mov rax, [rel irreg.offset]
                     assert_eq!(
@@ -209,13 +209,17 @@ impl CodeGenNasm64 {
                     self.code.ret();
                     last_ins_br = true;
                 }
-                IROp::LocalCall(other_code_block_id) => {
+                IROp::LocalCall {
+                    block_id: other_code_block_id,
+                    dest: _dest,
+                } => {
                     self.code.call(Operand::CodeBlock(*other_code_block_id));
                     last_ins_br = false;
                 }
             }
         }
         if !last_ins_br {
+            // TODO: move to IR?
             self.code.ret();
         }
     }

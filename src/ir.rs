@@ -18,9 +18,12 @@ pub struct IRCodeBlockId(pub usize);
 pub enum IROp {
     /// Call a code block withtin a function,
     /// after the call is complete, PC is set to the next instruction after the call
-    LocalCall(IRCodeBlockId),
+    LocalCall {
+        block_id: IRCodeBlockId,
+        dest: IRReg,
+    },
     /// Return a register from the function
-    Return(IRReg),
+    Return { value: IRReg },
 }
 
 #[derive(Debug)]
@@ -43,6 +46,9 @@ pub struct IRFunction {
     pub pos: Pos,
     pub name: String,
     pub blocks: Vec<IRCodeBlock>,
+    /// Regs. For now each reg is nothing but its own index
+    /// We'll keep it as vec for future
+    pub regs: Vec<IRReg>,
 }
 
 impl IRFunction {
@@ -51,7 +57,14 @@ impl IRFunction {
             name: name.into(),
             blocks: vec![],
             pos,
+            regs: vec![IRReg::UNIT],
         }
+    }
+
+    fn new_reg(&mut self) -> IRReg {
+        let reg_id = IRReg(self.regs.len());
+        self.regs.push(reg_id);
+        reg_id
     }
 
     /// Prepares block to insert without actually inserting it yet(dummy will be inserted instead)
@@ -118,9 +131,9 @@ impl IR {
                     let ret = match value.as_ref() {
                         Some(expr) => {
                             let expr_reg = self.translate_expr(ir_fun, expr);
-                            IROp::Return(expr_reg)
+                            IROp::Return { value: expr_reg }
                         }
-                        None => IROp::Return(IRReg::UNIT),
+                        None => IROp::Return { value: IRReg::UNIT },
                     };
                     block.ops.push(ret);
                 }
@@ -134,7 +147,11 @@ impl IR {
                     // on IR level we just translate it into series of branches
 
                     let blk = self.translate_code_block(ir_fun, nested_block);
-                    block.ops.push(IROp::LocalCall(blk));
+                    let dest_reg = ir_fun.new_reg();
+                    block.ops.push(IROp::LocalCall {
+                        block_id: blk,
+                        dest: dest_reg,
+                    });
                 }
                 ast::ExprKind::Unit => {
                     // Unit() on top-expr(stmt) level is essentially nop.

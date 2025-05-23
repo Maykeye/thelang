@@ -19,7 +19,7 @@ fn test_ir() {
     let blk = &main.blocks[0];
     assert_eq!(blk.id, IRCodeBlockId(0));
     assert_eq!(blk.ops.len(), 1);
-    if let &IROp::Return(r) = &blk.ops[0] {
+    if let &IROp::Return { value: r } = &blk.ops[0] {
         assert_eq!(r, IRReg(0));
     } else {
         panic!("ret expected");
