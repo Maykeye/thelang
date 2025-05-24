@@ -3,6 +3,7 @@ use crate::ast;
 use crate::cst;
 use crate::tokens::Pos;
 use std::collections::HashMap;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IRReg(pub usize);
@@ -11,8 +12,20 @@ impl IRReg {
     pub const UNIT: IRReg = IRReg(0);
 }
 
+impl Display for IRReg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "$R{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IRCodeBlockId(pub usize);
+
+impl Display for IRCodeBlockId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, ".b{}", self.0)
+    }
+}
 
 #[derive(Debug)]
 pub enum IROp {
@@ -106,6 +119,35 @@ impl IR {
         Self {
             functions: Default::default(),
         }
+    }
+    pub fn to_text(&self) -> String {
+        let mut s = String::new();
+
+        for func in self.functions.values() {
+            s.push_str("FUNC ");
+            s.push_str(&func.name);
+            s.push('\n');
+            // TODO: print args
+
+            for blk in func.blocks.iter() {
+                s.push_str(&format!("{}:\n", blk.id));
+                for op in blk.ops.iter() {
+                    let ins = match op {
+                        IROp::LocalCall { block_id, dest } => {
+                            format!("{} = call {}", dest, block_id)
+                        }
+                        IROp::Return { value } => format!("ret {}", value),
+                    };
+                    s.push_str(&ins);
+                    s.push('\n');
+                }
+                s.push('\n');
+            }
+            s.push_str("END FUNC ");
+            s.push_str(&func.name);
+            s.push('\n');
+        }
+        s
     }
 
     fn translate_expr(&mut self, ir_fun: &mut IRFunction, ast_expr: &ast::Expr) -> IRReg {

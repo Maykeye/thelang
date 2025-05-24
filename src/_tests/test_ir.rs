@@ -25,3 +25,20 @@ fn test_ir() {
         panic!("ret expected");
     }
 }
+
+#[test]
+fn test_nested_return() {
+    let source = " fn main() { {()} } ";
+    let ir = IR::from_thelan(source).unwrap();
+    let expected = "\
+FUNC main
+.b0:
+$r1 = call .b1
+ret $r1
+
+.b1:
+ret $r0
+
+END FUNC main";
+    assert_eq!(ir.to_text(), expected);
+}
