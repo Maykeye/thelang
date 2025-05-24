@@ -181,7 +181,7 @@ fn test_gram1() {
     assert_eq!(toks[2], Token::new(TokenKind::RCurly, Pos::new(2, 3)));
     assert_eq!(toks[3], Token::new(TokenKind::RParen, Pos::new(2, 4)));
     assert_eq!(toks[4], Token::new(TokenKind::Semi, Pos::new(2, 5)));
-    assert_eq!(toks[4], Token::new(TokenKind::Colon, Pos::new(2, 6)));
+    assert_eq!(toks[5], Token::new(TokenKind::Colon, Pos::new(2, 6)));
     assert_eq!(toks.len(), 6);
 }
 
