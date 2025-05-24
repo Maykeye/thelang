@@ -1,9 +1,11 @@
 # Compiler Roadmap
 
 ## Immediate
-* Add impl for IR to add return(JMP_NEXT?) to the end of the nested block
-* Break `ast::test_ast::test_nesting_return_type_w_unit_type`
-* Add (virtual) register allocation, scope = function. SSA + local mem. Have several kind of registers like R1(actual virtual reg), M1(memory), A1 where one is operated on, second stores data perhaps on stack third(A1) is argument.
+* Add arguments
+* Write IR Types into output(?)
+* Add (virtual) register allocation, scope = function(done). SSA + local mem. Have several kind of registers like R1(actual virtual reg), M1(memory), A1 where one is operated on, second stores data perhaps on stack third(A1) is argument.
+* Add booleans type
+* Add registers mappings
 
 
 ## Delayed goals
@@ -28,4 +30,6 @@
 
 ### DONE
 * Implement IR test for nesting code blocks (copy-paste main.rs is enough)
+* Break and fix `ast::test_ast::test_nesting_return_type_w_unit_type`
 * {{}} in ir should be `r1 = call b2`, in nasm it should be `call .b2`
+* Add impl for IR to add return(JMP_NEXT?) to the end of the nested block

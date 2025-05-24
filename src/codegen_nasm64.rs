@@ -3,7 +3,7 @@ use std::{fmt::Display, vec};
 use crate::{
     IR,
     codegen::CodeGen,
-    ir::{IRCodeBlockId, IRFunction, IROp, IRReg},
+    ir::{IRCodeBlockId, IRFunction, IROp, IRReg, IRTypeId},
 };
 
 /// Target OS for nasm64, for now only one is supported
@@ -194,33 +194,25 @@ impl CodeGenNasm64 {
             ir_func.name, code_block_id.0
         ));
         self.code.cb_label(code_block_id);
-        let mut last_ins_br = false;
-
         for op in &code_block.ops {
             match op {
                 IROp::Return { value: irreg } => {
-                    // TODO: once we'll implement virtual registers, we'll do
+                    // TODO: once we'll implement virtual registers and mappings, we'll do
                     // mov rax, [rel irreg.offset]
-                    assert_eq!(
-                        *irreg,
-                        IRReg::UNIT,
+                    let tp = ir_func.get_reg_type(*irreg);
+                    assert!(
+                        (tp == IRTypeId::UNIT) || (tp == IRTypeId::NEVER),
                         "currently only () register is supported"
                     );
                     self.code.ret();
-                    last_ins_br = true;
                 }
                 IROp::LocalCall {
                     block_id: other_code_block_id,
                     dest: _dest,
                 } => {
                     self.code.call(Operand::CodeBlock(*other_code_block_id));
-                    last_ins_br = false;
                 }
             }
-        }
-        if !last_ins_br {
-            // TODO: move to IR?
-            self.code.ret();
         }
     }
 

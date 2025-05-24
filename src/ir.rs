@@ -8,13 +8,21 @@ use std::fmt::Display;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IRReg(pub usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IRTypeId(pub usize);
+
+impl IRTypeId {
+    pub const NEVER: IRTypeId = IRTypeId(0);
+    pub const UNIT: IRTypeId = IRTypeId(1);
+}
+
 impl IRReg {
     pub const UNIT: IRReg = IRReg(0);
 }
 
 impl Display for IRReg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "$R{}", self.0)
+        write!(f, "$r{}", self.0)
     }
 }
 
@@ -43,6 +51,7 @@ pub enum IROp {
 pub struct IRCodeBlock {
     pub id: IRCodeBlockId,
     pub ops: Vec<IROp>,
+    pub type_id: IRTypeId,
 }
 
 impl IRCodeBlock {
@@ -50,6 +59,7 @@ impl IRCodeBlock {
         Self {
             id,
             ops: Default::default(),
+            type_id: IRTypeId::UNIT,
         }
     }
 }
@@ -59,9 +69,7 @@ pub struct IRFunction {
     pub pos: Pos,
     pub name: String,
     pub blocks: Vec<IRCodeBlock>,
-    /// Regs. For now each reg is nothing but its own index
-    /// We'll keep it as vec for future
-    pub regs: Vec<IRReg>,
+    pub regs: Vec<IRTypeId>,
 }
 
 impl IRFunction {
@@ -70,13 +78,13 @@ impl IRFunction {
             name: name.into(),
             blocks: vec![],
             pos,
-            regs: vec![IRReg::UNIT],
+            regs: vec![IRTypeId::UNIT],
         }
     }
 
-    fn new_reg(&mut self) -> IRReg {
+    fn new_reg(&mut self, type_id: IRTypeId) -> IRReg {
         let reg_id = IRReg(self.regs.len());
-        self.regs.push(reg_id);
+        self.regs.push(type_id);
         reg_id
     }
 
@@ -106,6 +114,13 @@ impl IRFunction {
         let id = block.id;
         self.blocks[id.0] = block;
         id
+    }
+
+    pub fn get_reg_type(&self, reg: IRReg) -> IRTypeId {
+        self.regs[reg.0]
+    }
+    pub fn get_block_type(&self, block: IRCodeBlockId) -> IRTypeId {
+        self.blocks[block.0].type_id
     }
 }
 
@@ -164,6 +179,9 @@ impl IR {
     ) -> IRCodeBlockId {
         let mut block = ir_fun.prepare_block();
 
+        let mut last_reg = None;
+        let mut has_branch = false;
+
         for x in &ast_code_block.exprs {
             // This is a AST code block, where everything is expression.
             // For IR we have OPs
@@ -178,6 +196,8 @@ impl IR {
                         None => IROp::Return { value: IRReg::UNIT },
                     };
                     block.ops.push(ret);
+                    block.type_id = IRTypeId::NEVER;
+                    has_branch = true;
                 }
                 ast::ExprKind::CodeBlock(nested_block) => {
                     // Nessted block, a case of
@@ -189,16 +209,24 @@ impl IR {
                     // on IR level we just translate it into series of branches
 
                     let blk = self.translate_code_block(ir_fun, nested_block);
-                    let dest_reg = ir_fun.new_reg();
+                    let dest_reg = ir_fun.new_reg(ir_fun.get_block_type(blk));
                     block.ops.push(IROp::LocalCall {
                         block_id: blk,
                         dest: dest_reg,
                     });
+                    last_reg = Some(dest_reg);
                 }
                 ast::ExprKind::Unit => {
                     // Unit() on top-expr(stmt) level is essentially nop.
                 }
             }
+        }
+
+        if !has_branch {
+            let return_reg = last_reg.unwrap_or(IRReg::UNIT);
+            let op = IROp::Return { value: return_reg };
+            block.ops.push(op);
+            block.type_id = ir_fun.get_reg_type(return_reg);
         }
 
         ir_fun.insert_block(block)

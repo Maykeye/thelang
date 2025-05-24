@@ -39,6 +39,6 @@ ret $r1
 .b1:
 ret $r0
 
-END FUNC main";
+END FUNC main\n";
     assert_eq!(ir.to_text(), expected);
 }
