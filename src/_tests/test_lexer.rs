@@ -175,13 +175,14 @@ fn test_empty_non_raw_ident() {
 
 #[test]
 fn test_gram1() {
-    let toks = tokenize("\n({});").unwrap();
-    assert_eq!(toks.len(), 5);
+    let toks = tokenize("\n({});:").unwrap();
     assert_eq!(toks[0], Token::new(TokenKind::LParen, Pos::new(2, 1)));
     assert_eq!(toks[1], Token::new(TokenKind::LCurly, Pos::new(2, 2)));
     assert_eq!(toks[2], Token::new(TokenKind::RCurly, Pos::new(2, 3)));
     assert_eq!(toks[3], Token::new(TokenKind::RParen, Pos::new(2, 4)));
     assert_eq!(toks[4], Token::new(TokenKind::Semi, Pos::new(2, 5)));
+    assert_eq!(toks[4], Token::new(TokenKind::Colon, Pos::new(2, 6)));
+    assert_eq!(toks.len(), 6);
 }
 
 #[test]

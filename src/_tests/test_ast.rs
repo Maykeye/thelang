@@ -70,3 +70,74 @@ fn test_nesting_return_type_w_unit_type() {
     impl_nesting_return_type("fn nesting()\n{{return ()}}");
     impl_nesting_return_type("fn nesting()\n{{{()}}}");
 }
+
+fn impl_test_args_ok(source: &str, n: usize) {
+    let toks = tokenize(source).unwrap();
+    let cst = CST::from_tokens(&toks).unwrap();
+    let ast = AST::from_cst(cst).unwrap();
+    let fun = ast.functions.get("fun").unwrap();
+    assert_eq!(
+        fun.args.len(),
+        n,
+        "{source} should have {n} args, not {}",
+        fun.args.len()
+    );
+    for i in 0..n {
+        let arg = &fun.args[i];
+        assert_eq!(arg.name, format!("a{i}"), "{source}: arg#{i} name mismatch");
+    }
+}
+
+#[test]
+fn test_args_ok() {
+    impl_test_args_ok("fn fun(){}", 0);
+    impl_test_args_ok("fn fun(a0:()){}", 1);
+    impl_test_args_ok("fn fun(a0:(),){}", 1);
+    impl_test_args_ok("fn fun(a0:(),a1:()){}", 2);
+    impl_test_args_ok("fn fun(a0:(),a1:(),){}", 2);
+    impl_test_args_ok("fn fun(a0:(),a1:(),a2:()){}", 3);
+    impl_test_args_ok("fn fun(a0:(),a1:(),a2:(),){}", 3);
+}
+
+fn impl_test_args_err(source: &str) {
+    let toks = tokenize(source).unwrap();
+    let cst = CST::from_tokens(&toks).unwrap();
+    let ast = AST::from_cst(cst);
+    assert!(ast.is_err());
+}
+
+#[test]
+fn test_args_err() {
+    impl_test_args_err("fn fun(a0:(),a0:()){}");
+    impl_test_args_err("fn fun(a0:(),a1:(), a0:()){}");
+}
+
+fn impl_test_args_underscore(source: &str, is_underscore: &[bool]) {
+    let toks = tokenize(source).unwrap();
+    let cst = CST::from_tokens(&toks).unwrap();
+    let ast = AST::from_cst(cst).unwrap();
+    let fun = ast.functions.get("fun").unwrap();
+    let n = is_underscore.len();
+    for i in 0..n {
+        let arg = &fun.args[i];
+        if !is_underscore[i] {
+            assert_eq!(arg.name, format!("a{i}"), "{source}: arg#{i} name mismatch");
+        } else {
+            assert_eq!(
+                arg.name,
+                format!("$arg${i}"),
+                "{source}: arg#{i} underscore name mismatch"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_args_underscore() {
+    impl_test_args_underscore("fn fun(_:()){}", &[true]);
+    impl_test_args_underscore("fn fun(_:(),_:()){}", &[true]);
+    impl_test_args_underscore(
+        "fn fun(a0:(), _:(), a2:(), _:()){}",
+        &[false, true, false, true],
+    );
+}

@@ -27,6 +27,21 @@ pub enum Type {
 }
 
 #[derive(Debug)]
+pub struct Variable {
+    pub name: String,
+    pub r#type: Option<Type>,
+}
+
+impl Variable {
+    pub fn new<N: Into<String>>(name: N, r#type: Option<Type>) -> Self {
+        Self {
+            name: name.into(),
+            r#type,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ExprKind {
     Unit,
     Return(Option<Box<Expr>>),
@@ -77,6 +92,7 @@ pub struct Function {
     pub name: String,
     pub r#type: TpFunction,
     pub body: Option<CodeBlock>,
+    pub args: Vec<Variable>,
 }
 
 #[derive(Debug)]
@@ -133,6 +149,7 @@ impl AST {
                 name: full_name.clone(),
                 r#type: tp_func,
                 body: None,
+                args: vec![],
             };
 
             mappings.insert(full_name.clone(), cst_func);

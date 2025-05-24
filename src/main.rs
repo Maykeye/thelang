@@ -14,7 +14,7 @@ mod lexer;
 use crate::codegen::CodeGen;
 
 fn main() {
-    let source = " fn main() { {()} } ";
+    let source = " fn main(a:()) { a } ";
     let tokens = tokenize(source).unwrap();
     let cst = CST::from_tokens(&tokens).unwrap();
     let ast = AST::from_cst(cst).unwrap();

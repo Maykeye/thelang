@@ -29,7 +29,9 @@ It can create nasm64 linux assembler code for absolutely empty functions
 
 ## Syntax
 
-* FUNCTION_DEFINITION::= `fn` IDENTIFIER `(` ARGS_NYI `)` `{` CODE_BLOCK `}`
+* FUNCTION_DEFINITION::= `fn` IDENTIFIER `(` ARGS `)` `{` CODE_BLOCK `}`
+
+* ARGS ::= [IDENTIFIER `:` TYPE {`,` IDENTIFIER `:` TYPE} [`,`]]
 
 * CODE_BLOCK ::= {`;`} [EXPR {`;` {`;`} EXPR} {`;`}]
 
@@ -37,7 +39,9 @@ It can create nasm64 linux assembler code for absolutely empty functions
        | `()` (*type unit*) 
        | `{` CODE_BLOCK `}`
 
-* IDENTIFIER ::=  ( alpha | `_` ) ( alpha | digit | `_` | `$` )
+* IDENTIFIER ::=  ( alpha | `_` ) { alpha | digit | `_` | `$` }
+
+* TYPE ::= IDENTIFIER | `()`
 
 * alpha ::= char.is_alphabetic (*per rust api*)
 

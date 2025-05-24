@@ -15,6 +15,8 @@ pub enum TokenKind {
     RCurly,
     /// Token separator
     Semi,
+    /// Separates variable(or argument) name from type
+    Colon,
     /// Return keyword. Grammar is
     /// return <expr> ;
     /// return ;
