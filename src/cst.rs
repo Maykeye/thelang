@@ -88,12 +88,32 @@ impl Node {
     fn new(kind: NodeKind, pos: Pos) -> Self {
         Self { kind, pos }
     }
+
+    pub fn new_unit(pos: Pos) -> Node {
+        Self {
+            kind: NodeKind::Unit,
+            pos,
+        }
+    }
+
+    pub fn new_return(value: Option<Node>, pos: Pos) -> Node {
+        let expr = match value {
+            Some(expr) => expr,
+            None => Node::new_unit(pos),
+        };
+        Self {
+            kind: NodeKind::Return(Box::new(expr)),
+            pos,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct CST {
     pub functions: HashMap<String, Fn>,
 }
+
+type OptExprParsingResult = Option<(usize, Result<Node, String>)>;
 
 impl CST {
     pub fn new() -> Self {
@@ -102,39 +122,74 @@ impl CST {
         }
     }
 
-    /// Error recovery: if something that must preceed {} had error, find the start of the
-    /// block and its end taking nested blocks into account and skip the content of the block
-    /// We'll treat `foobar() }` as foobar(){}
-    pub fn error_recovery_find_completed_block(toks: &Tokens, mut i: usize) -> usize {
-        // Skip the next block
+    /// Find a token that must separate exprssion from other and return its position.
+    /// It means we are looking for the next semicolon or RCurly as they 100% end the whole
+    /// expression. Nested expressions are skipped
+    /// Returned position: position of the separator
+    pub fn error_recovery_find_expr_end(toks: &Tokens, mut i: usize) -> usize {
+        let mut brace_level = 0;
+
         while i < toks.len() {
-            if toks[i].kind == TokenKind::LCurly {
-                i += 1;
-                break;
+            match toks[i].kind {
+                TokenKind::RCurly if brace_level == 0 => return i,
+                TokenKind::Semi if brace_level == 0 => return i,
+                TokenKind::RCurly => {
+                    brace_level -= 1;
+                }
+                TokenKind::LCurly => {
+                    brace_level += 1;
+                }
+                _ => (),
             }
-            if toks[i].kind == TokenKind::RCurly {
-                return i + 1;
-            }
+
             i += 1;
         }
-        // no block found
-        if i >= toks.len() {
-            return i;
-        }
+        i
+    }
+    /// Find a block termination
+    /// It means we are looking for the next RCurly as it 100% ends
+    /// block. Nested blocks are skipped
+    /// Returned position: position of the separator
+    pub fn error_recovery_find_current_block_end(toks: &Tokens, mut i: usize) -> usize {
+        let mut brace_level = 0;
 
-        // Block found
-        let mut level = 1;
         while i < toks.len() {
-            if toks[i].kind == TokenKind::LCurly {
-                level += 1;
-            }
-            if toks[i].kind == TokenKind::RCurly {
-                level -= 1;
-                if level == 0 {
-                    i += 1;
-                    break;
+            match toks[i].kind {
+                TokenKind::RCurly if brace_level == 0 => return i,
+                TokenKind::Semi if brace_level == 0 => return i,
+                TokenKind::RCurly => {
+                    brace_level -= 1;
                 }
+                TokenKind::LCurly => {
+                    brace_level += 1;
+                }
+                _ => (),
             }
+
+            i += 1;
+        }
+        i
+    }
+    /// Find a block start, then termination
+    /// It means we are looking for the next RCurly as it 100% ends
+    /// block. Nested blocks are skipped
+    /// Returned position: position of the separator
+    pub fn error_recovery_find_next_block_end(toks: &Tokens, mut i: usize) -> usize {
+        let mut brace_level = -1;
+
+        while i < toks.len() {
+            match toks[i].kind {
+                TokenKind::RCurly if brace_level <= 0 => return i,
+                TokenKind::Semi if brace_level == 0 => return i,
+                TokenKind::RCurly => {
+                    brace_level -= 1;
+                }
+                TokenKind::LCurly => {
+                    brace_level += 1;
+                }
+                _ => (),
+            }
+
             i += 1;
         }
         i
@@ -154,22 +209,6 @@ impl CST {
         } else {
             None
         }
-    }
-
-    pub fn parse_expr(toks: &Tokens, mut i: usize) -> (usize, Result<Node, String>) {
-        // TBD: RDP over exprs
-        if toks.kind_eq(i, TokenKind::LParen) && toks.kind_eq(i + 1, TokenKind::RParen) {
-            i += 2;
-            return (i, Ok(Node::new(NodeKind::Unit, toks[i - 2].pos)));
-        }
-
-        return (
-            i,
-            Err(format!(
-                "unknown expr kind {:?}",
-                toks.get_nth_kind_description(i)
-            )),
-        );
     }
 
     // Check expression separator.
@@ -200,11 +239,109 @@ impl CST {
         return Err(msg);
     }
 
-    pub fn parse_code_block(toks: &Tokens, mut i: usize) -> (usize, Result<CodeBlock, String>) {
-        // {
+    /// Parse terminal expression, if curent token looks like it begins it.
+    /// Error is reported only if we parsed
+    /// EXPR_TERM ::= ()
+    ///           |   IDENT
+    ///           |   '{' CODE_BLOCK '}'
+    // TODO: make nomal return type
+    fn parse_term_expr(toks: &Tokens, mut i: usize) -> OptExprParsingResult {
+        // ()
+        if toks.kind_eq(i, TokenKind::LParen) && toks.kind_eq(i + 1, TokenKind::RParen) {
+            i += 2;
+            return Some((i, Ok(Node::new(NodeKind::Unit, toks[i - 2].pos))));
+        }
+
+        // ( EXPR )
+        if toks.kind_eq(i, TokenKind::LParen) {
+            let start_pos = toks.get_nth_pos(i);
+            i += 1;
+            let parsed_expr = Self::parse_expr_required(toks, i);
+            i = parsed_expr.0;
+            let expr = match parsed_expr.1 {
+                Ok(expr) => expr,
+                Err(msg) => return Some((i, Err(msg))),
+            };
+            if toks.kind_eq(i, TokenKind::RParen) {
+                return Some((i + 1, Ok(expr)));
+            }
+            let end_pos = toks.get_nth_pos(i);
+            let msg = end_pos.report(format!("RParen expected for closing LParen at {start_pos}"));
+            return Some((i, Err(msg)));
+        }
+
+        // IDENT
+        if let Some(ident) = toks.get_identifier(i) {
+            unimplemented!();
+        }
+
+        // LCurly. Nested code-block.
+        if toks.kind_eq(i, TokenKind::LCurly) {
+            let start_pos = toks[i].pos;
+            let (next_i, result) = Self::parse_code_block(toks, i);
+            i = next_i;
+            let nested_block = match result {
+                Ok(block) => block,
+                Err(err) => {
+                    return Some((i, Err(err)));
+                }
+            };
+            let node = Node::new(NodeKind::CodeBlock(nested_block), start_pos);
+            return Some((i, Ok(node)));
+        }
+        None
+    }
+
+    /// Parse an unary expression
+    /// EXPR_UNARY ::= `return` [EXPR]  
+    /// | EXPR_TERM
+    fn parse_expr_unary(toks: &Tokens, i: usize) -> OptExprParsingResult {
+        if toks.kind_eq(i, TokenKind::Return) {
+            let pos = toks[i].pos;
+            let return_value = Self::parse_expr_opt(toks, i + 1);
+            let (i, return_value) = match return_value {
+                Some((i, Ok(node))) => (i, Node::new_return(Some(node), pos)),
+                Some((i, Err(msg))) => return Some((i, Err(msg))),
+                None => (i + 1, Node::new_return(None, pos)),
+            };
+
+            return Some((i, Ok(return_value)));
+        }
+
+        Self::parse_term_expr(toks, i)
+    }
+
+    /// Parse an expression
+    /// EXPR ::= EXPR_UNARY
+    fn parse_expr_opt(toks: &Tokens, i: usize) -> OptExprParsingResult {
+        Self::parse_expr_unary(toks, i)
+    }
+
+    fn parse_expr_required(toks: &Tokens, i: usize) -> (usize, Result<Node, String>) {
+        let parsed = Self::parse_expr_opt(toks, i);
+        match parsed {
+            Some(parsed) => parsed,
+            None => {
+                let msg = toks.get_nth_pos(i).report(format!(
+                    "expression required, found instead `{}`",
+                    toks.get_nth_kind_description(i)
+                ));
+                (i, Err(msg))
+            }
+        }
+    }
+
+    /// Parses code-block
+    /// CODE_BLOCK ::= `{` {`;`} [EXPR {`;` {`;`} EXPR} {`;`}] `}`
+    /// Returns position after the code block, i.e after '}'
+    // TODO: use errors: vec<string>
+    fn parse_code_block(toks: &Tokens, mut i: usize) -> (usize, Result<CodeBlock, String>) {
         let mut cb = CodeBlock::new(toks[i].pos);
         if !toks.kind_eq(i, TokenKind::LCurly) {
-            i = Self::error_recovery_find_completed_block(toks, i);
+            i = Self::error_recovery_find_current_block_end(toks, i);
+            if toks.kind_eq(i, TokenKind::RCurly) {
+                i += 1;
+            }
             return (
                 i,
                 Err("function definition: code block expected".to_string()),
@@ -213,106 +350,52 @@ impl CST {
         i += 1;
 
         while i < toks.len() {
+            // Handle expression separators
             match toks[i].kind {
-                // Expression separator. For now it's being replaced with (unit) instance
-                TokenKind::Semi => {
-                    // Semicolon is a discarding nop operator. It gets replced by () node,
-                    // but if and only if it's the last node before RCurly
-                    if toks.kind_eq(i + 1, TokenKind::RCurly) {
-                        cb.nodes.push(Node::new(NodeKind::Unit, toks[i].pos));
-                    }
-                    i += 1;
-                    continue;
-                }
-
-                // LCurly. Nested code-block.
-                TokenKind::LCurly => {
-                    let start_pos = toks[i].pos;
-                    let (next_i, result) = Self::parse_code_block(toks, i);
-                    i = next_i;
-                    let nested_block = match result {
-                        Ok(block) => block,
-                        Err(err) => {
-                            i = Self::error_recovery_find_completed_block(toks, next_i);
-                            return (i, Err(err));
-                        }
-                    };
-                    cb.nodes
-                        .push(Node::new(NodeKind::CodeBlock(nested_block), start_pos));
-                }
-
-                // RCurly. End of the code block
+                // Cdoe block terminator
                 TokenKind::RCurly => {
                     break;
                 }
-
-                // Return. Expression that forces return from the function
-                TokenKind::Return => {
-                    let ret_pos = toks[i].pos;
+                // Expression separator. For now it's being replaced with (unit) instance
+                TokenKind::Semi => {
                     i += 1;
-
-                    // `return ();` synonyms:
-                    // * return ;
-                    // * return }
-                    if toks.kind_eq(i, TokenKind::Semi) || toks.kind_eq(i, TokenKind::RCurly) {
-                        // We consume `return` and leave parsing of the remaining token to the main
-                        // loop
-                        let unit = Node::new(NodeKind::Unit, ret_pos);
-                        cb.nodes
-                            .push(Node::new(NodeKind::Return(Box::new(unit)), ret_pos));
-                        continue;
+                    // Semicolon is a discarding nop operator. It gets replced by () node,
+                    // but if and only if it's the last node before RCurly
+                    if toks.kind_eq(i, TokenKind::RCurly) {
+                        cb.nodes.push(Node::new(NodeKind::Unit, toks[i].pos));
                     }
-
-                    let parsed_expr = Self::parse_expr(toks, i);
-                    i = parsed_expr.0;
-                    let expr = match parsed_expr.1 {
-                        Ok(expr) => expr,
-                        Err(msg) => return (i, Err(msg)),
-                    };
-
-                    // TODO: adapt this function to use vec[string]
-                    if let Err(msg) = Self::check_expression_separator(toks, &mut i) {
-                        return (i, Err(msg));
-                    }
-
-                    cb.nodes
-                        .push(Node::new(NodeKind::Return(Box::new(expr)), ret_pos));
                     continue;
                 }
 
-                // LParen. Start of "normal" expression
-                TokenKind::LParen => {
-                    let parsed_expr = Self::parse_expr(toks, i);
-                    i = parsed_expr.0;
-                    let expr = match parsed_expr.1 {
+                _ => {
+                    let parsed = Self::parse_expr_required(toks, i);
+                    let expr = match parsed.1 {
                         Ok(expr) => expr,
-                        Err(msg) => return (i, Err(msg)),
+                        Err(msg) => {
+                            // TODO: use error_recovery_find_expr_end and vec<err>
+                            i = Self::error_recovery_find_current_block_end(toks, i);
+                            if toks.kind_eq(i, TokenKind::RCurly) {
+                                i += 1;
+                            }
+                            return (i, Err(msg));
+                        }
                     };
                     cb.nodes.push(expr);
-
+                    i = parsed.0;
                     // TODO: adapt this function to use vec[string]
                     if let Err(msg) = Self::check_expression_separator(toks, &mut i) {
                         return (i, Err(msg));
                     }
-                }
-
-                _ => {
-                    // TODO: skip to the next semicolon?
-                    let next_i = Self::error_recovery_find_completed_block(toks, i);
-                    return (
-                        next_i,
-                        Err(toks.get_nth_pos(i).report(format!(
-                            "function definition: unsupported token: {:?}",
-                            toks[i].kind
-                        ))),
-                    );
                 }
             }
         }
 
         // }
         if !toks.kind_eq(i, TokenKind::RCurly) {
-            i = Self::error_recovery_find_completed_block(toks, i);
+            i = Self::error_recovery_find_current_block_end(toks, i);
+            if toks.kind_eq(i, TokenKind::RCurly) {
+                i += 1;
+            }
             return (
                 i,
                 Err("function definition: end of block expected".to_string()),
@@ -396,7 +479,10 @@ impl CST {
 
         // FN
         if !toks.kind_eq(i, TokenKind::Fn) {
-            i = Self::error_recovery_find_completed_block(toks, i);
+            i = Self::error_recovery_find_next_block_end(toks, i);
+            if toks.kind_eq(i, TokenKind::RCurly) {
+                i += 1;
+            }
             return (i, Err("function declaration: expected fn".to_string()));
         }
         i += 1;
@@ -405,7 +491,10 @@ impl CST {
         let name = match toks.get_identifier(i) {
             Some(name) => name,
             None => {
-                i = Self::error_recovery_find_completed_block(toks, i);
+                i = Self::error_recovery_find_next_block_end(toks, i);
+                if toks.kind_eq(i, TokenKind::RCurly) {
+                    i += 1;
+                }
                 return (i, Err("identifier(function name) expected".to_string()));
             }
         };
@@ -414,7 +503,10 @@ impl CST {
 
         // (Args
         if !toks.kind_eq(i, TokenKind::LParen) {
-            i = Self::error_recovery_find_completed_block(toks, i);
+            i = Self::error_recovery_find_next_block_end(toks, i);
+            if toks.kind_eq(i, TokenKind::RCurly) {
+                i += 1;
+            }
             return (
                 i,
                 Err("function declaration: arguments expected".to_string()),
@@ -425,13 +517,19 @@ impl CST {
         let status;
         (i, status) = Self::parse_fn_decl_arguments(toks, i, &mut func.args);
         if let Err(err) = status {
-            i = Self::error_recovery_find_completed_block(toks, i);
+            i = Self::error_recovery_find_next_block_end(toks, i);
+            if toks.kind_eq(i, TokenKind::RCurly) {
+                i += 1;
+            }
             return (i, Err(err));
         }
 
         // )
         if !toks.kind_eq(i, TokenKind::RParen) {
-            i = Self::error_recovery_find_completed_block(toks, i);
+            i = Self::error_recovery_find_next_block_end(toks, i);
+            if toks.kind_eq(i, TokenKind::RCurly) {
+                i += 1;
+            }
             return (
                 i,
                 Err("function declaration: end of arguments expected".to_string()),
@@ -489,7 +587,10 @@ impl CST {
                             .pos
                             .report(format!("Unexpected top-level token {:?}", toks[i].kind)),
                     );
-                    i = Self::error_recovery_find_completed_block(&toks, i);
+                    i = Self::error_recovery_find_next_block_end(&toks, i);
+                    if toks.kind_eq(i, TokenKind::RCurly) {
+                        i += 1;
+                    }
                     assert!(i > i0, "internal error: parser stuck at error recovering");
                 }
             }

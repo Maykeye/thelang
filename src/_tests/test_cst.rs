@@ -4,7 +4,7 @@ use crate::{CST, tokenize};
 
 fn cst_from_text(text: &str) -> CST {
     let t = tokenize(text).expect(&format!("Lexer failed for {text}"));
-    CST::from_tokens(&t).expect(&format!("CST failed for {text}"))
+    CST::from_tokens(&t).expect(&format!("CST failed for <<<\n{text}\n>>>"))
 }
 fn cst_err_from_text(text: &str) -> (CST, Vec<String>) {
     let t = tokenize(text).unwrap();
@@ -12,7 +12,11 @@ fn cst_err_from_text(text: &str) -> (CST, Vec<String>) {
 }
 fn assert_only_err(text: &str, err_msg: &str) {
     let (cst, err) = cst_err_from_text(text);
-    assert_eq!(err.len(), 1);
+    assert_eq!(
+        err.len(),
+        1,
+        "only one error expected, got: {err:?}\n{text}"
+    );
     assert!(cst.functions.is_empty());
     assert_eq!(err[0], err_msg);
 }
@@ -21,29 +25,28 @@ fn assert_only_err(text: &str, err_msg: &str) {
 fn test_err_rec_extra_rcurly() {
     let t = tokenize("fn hello world(){}}").unwrap();
     let t = Tokens::new(&t);
-    assert_eq!(CST::error_recovery_find_completed_block(&t, 2), 7);
-    assert_eq!(CST::error_recovery_find_completed_block(&t, 5), 7);
-    assert_eq!(CST::error_recovery_find_completed_block(&t, 6), 7);
+    assert_eq!(CST::error_recovery_find_next_block_end(&t, 2), 6);
+    assert_eq!(CST::error_recovery_find_next_block_end(&t, 5), 6);
+    assert_eq!(CST::error_recovery_find_next_block_end(&t, 6), 6);
 }
 #[test]
 fn test_err_rec_no_body() {
     let t = tokenize("fn hello world()").unwrap();
     let t = Tokens::new(&t);
-    assert_eq!(CST::error_recovery_find_completed_block(&t, 2), 5);
-    assert_eq!(CST::error_recovery_find_completed_block(&t, 4), 5);
+    assert_eq!(CST::error_recovery_find_next_block_end(&t, 2), 5);
+    assert_eq!(CST::error_recovery_find_next_block_end(&t, 4), 5);
 }
 
 #[test]
 fn test_err_rec_idx() {
     let t = tokenize("fn hello world()").unwrap();
     let t = Tokens::new(&t);
-    assert_eq!(CST::error_recovery_find_completed_block(&t, 100), 100);
+    assert_eq!(CST::error_recovery_find_next_block_end(&t, 100), 100);
 }
 
 #[test]
 fn test_ret() {
     fn r#impl(text: &str) {
-        println!("{text}");
         let cst = cst_from_text(text);
         let func = cst.functions.get("hello").unwrap();
         let body = func.body.as_ref().unwrap();
@@ -78,12 +81,12 @@ fn test_func_name_err_recovery() {
 fn test_func_block_err_recovery() {
     assert_only_err(
         "fn err(){)}",
-        "1: 10: function definition: unsupported token: RParen",
+        "1: 10: expression required, found instead `RParen`",
     );
 
     assert_only_err(
         "fn err(){{)}}",
-        "1: 11: function definition: unsupported token: RParen",
+        "1: 11: expression required, found instead `RParen`",
     );
 }
 

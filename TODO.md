@@ -6,10 +6,12 @@
   * [x] fix gram1
   * [x] add cst test for `foo(,); foo(a b,,)` etc (not ast)
   * [x] fix cst, ast
+  * [ ] add tests for ((({})))
   * [ ] add IROp for loading args
   * [ ] add IR type for arg
   * [ ] add IR regs names
   * [ ] stub in nasm64
+* Merge cst/error_recovery_find_next_block_end/error_recovery_find_current_block_end/error_recovery_find_expr_end
 * Write IR Types into output(?)
 * Add (virtual) register allocation, scope = function(done). SSA + local mem. Have several kind of registers like R1(actual virtual reg), M1(memory), A1 where one is operated on, second stores data perhaps on stack third(A1) is argument.
 * Add booleans type
@@ -18,6 +20,7 @@
 
 
 ## Delayed goals
+* In error recovery, right now error_recovery_find_completed_block goes beyond RCurly. Fix so it stops at it(optionally?) as in body parsing we need RCurly to stop parsing. Also make error recovery that fast forward not to RCurly, but to Semi, as if expression is invalid, parsing next may be fine.
 * Add lean4 backend
 * Add *the* integer type (only `u64` for now )
 * Add arguments

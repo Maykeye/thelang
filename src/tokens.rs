@@ -39,7 +39,7 @@ impl Token {
     }
 }
 pub struct Tokens<'a> {
-    tokens: &'a [Token],
+    pub tokens: &'a [Token],
 }
 
 impl<'a> Tokens<'a> {
@@ -110,6 +110,11 @@ impl Pos {
 impl Default for Pos {
     fn default() -> Self {
         Pos::new(1, 1)
+    }
+}
+impl Display for Pos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.line, self.col)
     }
 }
 
