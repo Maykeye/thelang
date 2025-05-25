@@ -3,11 +3,14 @@ use crate::ast::{ExprKind, Type};
 use crate::tokens::Pos;
 use crate::{cst::CST, lexer::tokenize};
 
+fn ast_from_text(source: &str) -> Result<AST, (AST, Vec<String>)> {
+    let toks = tokenize(source).expect(&format!("Lexer failed for {source}"));
+    let cst = CST::from_tokens(&toks).expect(&format!("CST failed for {source}"));
+    AST::from_cst(cst)
+}
+
 fn make_empty_func_ast() -> AST {
-    let toks = tokenize("\nfn empty_func()\n{\n}").unwrap();
-    let cst = CST::from_tokens(&toks).unwrap();
-    let ast = AST::from_cst(cst).unwrap();
-    ast
+    ast_from_text("\nfn empty_func()\n{\n}").unwrap()
 }
 
 #[test]
@@ -43,10 +46,7 @@ fn test_empty_func_definition() {
 }
 
 fn impl_nesting_return_type(txt: &str) {
-    println!("testing {txt}");
-    let toks = tokenize(txt).unwrap();
-    let cst = CST::from_tokens(&toks).unwrap();
-    let ast = AST::from_cst(cst).unwrap();
+    let ast = ast_from_text(txt).unwrap();
     let body = ast.functions.get("nesting").unwrap().body.as_ref().unwrap();
     assert_eq!(body.return_type, Some(Type::Unit));
 }
@@ -72,9 +72,7 @@ fn test_nesting_return_type_w_unit_type() {
 }
 
 fn impl_test_args_ok(source: &str, n: usize) {
-    let toks = tokenize(source).unwrap();
-    let cst = CST::from_tokens(&toks).unwrap();
-    let ast = AST::from_cst(cst).unwrap();
+    let ast = ast_from_text(source).unwrap();
     let fun = ast.functions.get("fun").unwrap();
     assert_eq!(
         fun.args.len(),
@@ -100,10 +98,8 @@ fn test_args_ok() {
 }
 
 fn impl_test_args_err(source: &str) {
-    let toks = tokenize(source).unwrap();
-    let cst = CST::from_tokens(&toks).unwrap();
-    let ast = AST::from_cst(cst);
-    assert!(ast.is_err());
+    let ast = ast_from_text(source);
+    assert!(ast.is_err(), "source unexpectedly parsed: {source}");
 }
 
 #[test]
@@ -113,11 +109,14 @@ fn test_args_err() {
 }
 
 fn impl_test_args_underscore(source: &str, is_underscore: &[bool]) {
-    let toks = tokenize(source).unwrap();
-    let cst = CST::from_tokens(&toks).unwrap();
-    let ast = AST::from_cst(cst).unwrap();
+    let ast = ast_from_text(source).unwrap();
     let fun = ast.functions.get("fun").unwrap();
     let n = is_underscore.len();
+    assert_eq!(
+        fun.args.len(),
+        is_underscore.len(),
+        "number of args mismatch\n{source}"
+    );
     for i in 0..n {
         let arg = &fun.args[i];
         if !is_underscore[i] {

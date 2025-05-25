@@ -2,16 +2,16 @@ use crate::cst::NodeKind;
 use crate::tokens::Tokens;
 use crate::{CST, tokenize};
 
-fn cst_fom_text(text: &str) -> CST {
+fn cst_from_text(text: &str) -> CST {
     let t = tokenize(text).unwrap();
     CST::from_tokens(&t).unwrap()
 }
-fn cst_err_fom_text(text: &str) -> (CST, Vec<String>) {
+fn cst_err_from_text(text: &str) -> (CST, Vec<String>) {
     let t = tokenize(text).unwrap();
     CST::from_tokens(&t).unwrap_err()
 }
 fn assert_only_err(text: &str, err_msg: &str) {
-    let (cst, err) = cst_err_fom_text(text);
+    let (cst, err) = cst_err_from_text(text);
     assert_eq!(err.len(), 1);
     assert!(cst.functions.is_empty());
     assert_eq!(err[0], err_msg);
@@ -44,7 +44,7 @@ fn test_err_rec_idx() {
 fn test_ret() {
     fn r#impl(text: &str) {
         println!("{text}");
-        let cst = cst_fom_text(text);
+        let cst = cst_from_text(text);
         let func = cst.functions.get("hello").unwrap();
         let body = func.body.as_ref().unwrap();
         let node0 = &body.nodes[0].kind;
@@ -64,7 +64,7 @@ fn test_ret() {
 
 #[test]
 fn test_func_name_err_recovery() {
-    let (cst, err) = cst_err_fom_text(
+    let (cst, err) = cst_err_from_text(
         "fn hello world(){} fn really hello(){} fn fine(){} fn aaa {}  fn fine_too(){} ",
     );
 
@@ -89,7 +89,7 @@ fn test_func_block_err_recovery() {
 
 #[test]
 fn test_nested_blocks() {
-    let cst = cst_fom_text("fn fun(){{};{{}}}");
+    let cst = cst_from_text("fn fun(){{};{{}}}");
     let body = cst.functions.get("fun").unwrap();
     let body = body.body.as_ref().unwrap().as_ref();
     assert_eq!(body.nodes.len(), 2);
@@ -111,4 +111,32 @@ fn test_nested_blocks() {
         }
         _ => panic!(">> unexpected node kind {:?}", &body.nodes[0]),
     }
+}
+
+#[test]
+fn test_n_args() {
+    let cst = cst_from_text("fn fun(){}");
+    assert_eq!(cst.functions["fun"].args.len(), 0);
+    let cst = cst_from_text("fn fun(a:a){}");
+    assert_eq!(cst.functions["fun"].args.len(), 1);
+    let cst = cst_from_text("fn fun(a:a,){}");
+    assert_eq!(cst.functions["fun"].args.len(), 1);
+    let cst = cst_from_text("fn fun(a:a, a:()){}");
+    assert_eq!(cst.functions["fun"].args.len(), 2);
+    let cst = cst_from_text("fn fun(a:a, a:(),){}");
+    assert_eq!(cst.functions["fun"].args.len(), 2);
+    let cst = cst_from_text("fn fun(a:a, a:(), a()){}");
+    assert_eq!(cst.functions["fun"].args.len(), 3);
+    let cst = cst_from_text("fn fun(a:a, a:(), a(),){}");
+    assert_eq!(cst.functions["fun"].args.len(), 3);
+}
+
+#[test]
+fn test_err_with_args() {
+    cst_err_from_text("fn fun(,){}");
+    cst_err_from_text("fn fun(a:){}");
+    cst_err_from_text("fn fun(:a){}");
+    cst_err_from_text("fn fun(a:a,a:){}");
+    cst_err_from_text("fn fun(a:a,:a){}");
+    cst_err_from_text("fn fun(a:a,,){}");
 }

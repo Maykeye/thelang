@@ -17,6 +17,8 @@ pub enum TokenKind {
     Semi,
     /// Separates variable(or argument) name from type
     Colon,
+    /// Variable separator
+    Comma,
     /// Return keyword. Grammar is
     /// return <expr> ;
     /// return ;

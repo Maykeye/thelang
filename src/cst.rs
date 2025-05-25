@@ -8,6 +8,14 @@ pub struct Arg {
     name: String,
     r#type: Node,
 }
+impl Arg {
+    fn new<N: Into<String>>(name: N, r#type: Node) -> Self {
+        Arg {
+            name: name.into(),
+            r#type,
+        }
+    }
+}
 
 trait GetPos {
     fn get_pos(&self) -> Pos;
@@ -64,6 +72,7 @@ pub enum NodeKind {
     Fn(Fn),
     CodeBlock(CodeBlock),
     Return(Box<Node>),
+    Identifier(String),
     Unit,
 }
 
@@ -311,6 +320,74 @@ impl CST {
         (i + 1, Ok(cb))
     }
 
+    pub fn parse_type(toks: &Tokens, i: usize) -> (usize, Result<Node, String>) {
+        if toks.kind_eq(i, TokenKind::LParen) && toks.kind_eq(i + 1, TokenKind::RParen) {
+            return (i + 2, Ok(Node::new(NodeKind::Unit, toks[i].pos)));
+        }
+
+        if let Some(ident) = toks.get_identifier(i) {
+            return (
+                i + 1,
+                Ok(Node::new(NodeKind::Identifier(ident), toks[i].pos)),
+            );
+        }
+        return (
+            i + 1,
+            Err(toks.get_nth_pos(i).report(format!(
+                "Type not implemented beyond simlpest; found token: {}",
+                toks.get_nth_kind_description(i)
+            ))),
+        );
+    }
+
+    /// Parses function:arguments)
+    /// Returns position of RParen,
+    /// or first index where it has no idea what to do
+    pub fn parse_fn_decl_arguments(
+        toks: &Tokens,
+        mut i: usize,
+        args: &mut Vec<Arg>,
+    ) -> (usize, Result<(), String>) {
+        if toks.kind_eq(i, TokenKind::RParen) {
+            return (i, Ok(()));
+        }
+        while i < toks.len() {
+            // IDENT : TYPE
+            if let TokenKind::Identifier(ident) = &toks[i].kind {
+                i += 1;
+                if !toks.kind_eq(i, TokenKind::Colon) {
+                    let msg = toks
+                        .get_nth_pos(i)
+                        .report("function declaration: arguments parsing: colon expected");
+                    return (i, Err(msg));
+                }
+                i += 1;
+
+                let arg_type;
+                (i, arg_type) = Self::parse_type(toks, i);
+                let arg_type = match arg_type {
+                    Ok(arg_type) => arg_type,
+                    Err(err) => return (i, Err(err)),
+                };
+                if toks[i].kind == TokenKind::Comma {
+                    i += 1;
+                }
+                if toks[i].kind == TokenKind::RParen {
+                    return (i, Ok(()));
+                }
+                args.push(Arg::new(ident, arg_type));
+                continue;
+            }
+            let msg = toks.get_nth_pos(i).report("argument expected");
+            return (i, Err(msg));
+        }
+
+        let msg = toks
+            .get_nth_pos(i)
+            .report("function declaration: arguments parsing: EOF met before RParen");
+        (i, Err(msg))
+    }
+
     pub fn parse_fn(toks: &Tokens, mut i: usize) -> (usize, Result<Fn, String>) {
         let i0 = i;
 
@@ -330,8 +407,9 @@ impl CST {
             }
         };
         i += 1;
+        let mut func = Fn::new(name, toks[i0].pos);
 
-        // Args
+        // (Args
         if !toks.kind_eq(i, TokenKind::LParen) {
             i = Self::error_recovery_find_completed_block(toks, i);
             return (
@@ -340,6 +418,13 @@ impl CST {
             );
         }
         i += 1;
+
+        let status;
+        (i, status) = Self::parse_fn_decl_arguments(toks, i, &mut func.args);
+        if let Err(err) = status {
+            i = Self::error_recovery_find_completed_block(toks, i);
+            return (i, Err(err));
+        }
 
         // )
         if !toks.kind_eq(i, TokenKind::RParen) {
@@ -360,8 +445,6 @@ impl CST {
                 return (i, Err(msg));
             }
         };
-
-        let mut func = Fn::new(name, toks[i0].pos);
 
         func.body = Some(Box::new(code_block));
 
