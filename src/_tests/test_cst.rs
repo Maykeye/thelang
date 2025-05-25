@@ -3,8 +3,8 @@ use crate::tokens::Tokens;
 use crate::{CST, tokenize};
 
 fn cst_from_text(text: &str) -> CST {
-    let t = tokenize(text).unwrap();
-    CST::from_tokens(&t).unwrap()
+    let t = tokenize(text).expect(&format!("Lexer failed for {text}"));
+    CST::from_tokens(&t).expect(&format!("CST failed for {text}"))
 }
 fn cst_err_from_text(text: &str) -> (CST, Vec<String>) {
     let t = tokenize(text).unwrap();
@@ -114,29 +114,57 @@ fn test_nested_blocks() {
 }
 
 #[test]
-fn test_n_args() {
-    let cst = cst_from_text("fn fun(){}");
-    assert_eq!(cst.functions["fun"].args.len(), 0);
-    let cst = cst_from_text("fn fun(a:a){}");
-    assert_eq!(cst.functions["fun"].args.len(), 1);
-    let cst = cst_from_text("fn fun(a:a,){}");
-    assert_eq!(cst.functions["fun"].args.len(), 1);
-    let cst = cst_from_text("fn fun(a:a, a:()){}");
-    assert_eq!(cst.functions["fun"].args.len(), 2);
-    let cst = cst_from_text("fn fun(a:a, a:(),){}");
-    assert_eq!(cst.functions["fun"].args.len(), 2);
-    let cst = cst_from_text("fn fun(a:a, a:(), a()){}");
-    assert_eq!(cst.functions["fun"].args.len(), 3);
-    let cst = cst_from_text("fn fun(a:a, a:(), a(),){}");
-    assert_eq!(cst.functions["fun"].args.len(), 3);
+fn test_arg_count() {
+    fn r#impl(source: &str, n: usize) {
+        let cst = cst_from_text(source);
+        assert_eq!(cst.functions["fun"].args.len(), n, "source: {source}");
+    }
+    r#impl("fn fun(){}", 0);
+    r#impl("fn fun(a:a){}", 1);
+    r#impl("fn fun(a:a,){}", 1);
+    r#impl("fn fun(a:(), a:()){}", 2);
+    r#impl("fn fun(a:a, a:a,){}", 2);
+    r#impl("fn fun(a:a, a:(), a:()){}", 3);
+    r#impl("fn fun(a:a, a:(), a:(),){}", 3);
 }
-
 #[test]
 fn test_err_with_args() {
     cst_err_from_text("fn fun(,){}");
     cst_err_from_text("fn fun(a:){}");
+    cst_err_from_text("fn fun(a:,a:a){}");
     cst_err_from_text("fn fun(:a){}");
     cst_err_from_text("fn fun(a:a,a:){}");
     cst_err_from_text("fn fun(a:a,:a){}");
     cst_err_from_text("fn fun(a:a,,){}");
+}
+
+#[test]
+fn test_arg_names() {
+    fn r#impl(source: &str, args: &[(&str, &str)]) {
+        let cst = cst_from_text(source);
+        assert_eq!(
+            cst.functions["fun"].args.len(),
+            args.len(),
+            "source: {source}"
+        );
+        for i in 0..args.len() {
+            let arg = &cst.functions["fun"].args[i];
+            assert_eq!(
+                arg.name, args[i].0,
+                "arg#{i} name mismatch; source: {source}"
+            );
+            if let NodeKind::Identifier(r#type) = &arg.r#type.kind {
+                assert_eq!(r#type, args[i].1, "arg#{i} name mismatch; source: {source}")
+            } else {
+                let ok = matches!(arg.r#type.kind, NodeKind::Unit) && args[i].1 == "()";
+                assert!(ok, "invalid arg#{i} type {:?}: {source}", arg.r#type.kind);
+            }
+        }
+    }
+
+    r#impl("fn fun(){}", &[]);
+    r#impl("fn fun(a:b){}", &[("a", "b")]);
+    r#impl("fn fun(a:_){}", &[("a", "_")]);
+    r#impl("fn fun(a1:_, a2:_){}", &[("a1", "_"), ("a2", "_")]);
+    r#impl("fn fun(_:(), foo: bar,){}", &[("_", "()"), ("foo", "bar")]);
 }

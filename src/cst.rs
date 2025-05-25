@@ -369,13 +369,13 @@ impl CST {
                     Ok(arg_type) => arg_type,
                     Err(err) => return (i, Err(err)),
                 };
+                args.push(Arg::new(ident, arg_type));
                 if toks[i].kind == TokenKind::Comma {
                     i += 1;
                 }
                 if toks[i].kind == TokenKind::RParen {
                     return (i, Ok(()));
                 }
-                args.push(Arg::new(ident, arg_type));
                 continue;
             }
             let msg = toks.get_nth_pos(i).report("argument expected");

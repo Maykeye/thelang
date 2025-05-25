@@ -5,7 +5,7 @@
   * [x] added arguments tests
   * [x] fix gram1
   * [x] add cst test for `foo(,); foo(a b,,)` etc (not ast)
-  * [ ] fix cst
+  * [x] fix cst
   * [ ] fix ast
   * [ ] stub in nasm64
 * Write IR Types into output(?)
