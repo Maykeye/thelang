@@ -7,15 +7,15 @@ use crate::{
 
 // TODO: replace with Variable?
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct TpFunctionArg {
-    name: String,
-    r#type: Type,
+pub struct TpFunctionArg {
+    pub name: String,
+    pub r#type: Type,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TpFunction {
-    args: Vec<TpFunctionArg>,
-    return_type: Type,
+    pub args: Vec<TpFunctionArg>,
+    pub return_type: Type,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -1,6 +1,6 @@
 use crate::{
     IR,
-    ir::{IRCodeBlockId, IROp, IRReg},
+    ir::{IRCodeBlockId, IROp, IRReg, IRTypeId},
 };
 
 #[test]
@@ -24,6 +24,16 @@ fn test_ir() {
     } else {
         panic!("ret expected");
     }
+}
+
+#[test]
+fn test_arg_types() {
+    let source = " fn main(none: ()) {} ";
+    let ir = IR::from_thelan(source).unwrap();
+    let func = ir.functions.get("main").unwrap();
+    assert_eq!(func.args.len(), 1);
+    assert_eq!(func.get_reg_type(func.args[0]), IRTypeId::UNIT);
+    assert!(func.args[0].0 >= IRReg::BUILTIN_REGS_COUNT);
 }
 
 #[test]

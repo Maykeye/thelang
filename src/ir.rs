@@ -18,6 +18,7 @@ impl IRTypeId {
 
 impl IRReg {
     pub const UNIT: IRReg = IRReg(0);
+    pub const BUILTIN_REGS_COUNT: usize = 1;
 }
 
 impl Display for IRReg {
@@ -69,6 +70,7 @@ pub struct IRFunction {
     pub pos: Pos,
     pub name: String,
     pub blocks: Vec<IRCodeBlock>,
+    pub args: Vec<IRReg>,
     pub regs: Vec<IRTypeId>,
 }
 
@@ -79,6 +81,7 @@ impl IRFunction {
             blocks: vec![],
             pos,
             regs: vec![IRTypeId::UNIT],
+            args: vec![],
         }
     }
 
@@ -165,14 +168,14 @@ impl IR {
         s
     }
 
-    fn translate_expr(&mut self, ir_fun: &mut IRFunction, ast_expr: &ast::Expr) -> IRReg {
+    fn parse_expr(&mut self, ir_fun: &mut IRFunction, ast_expr: &ast::Expr) -> IRReg {
         match &ast_expr.kind {
             ast::ExprKind::Unit => IRReg::UNIT,
             _ => unimplemented!("expression parser nyi for {:?}", &ast_expr.kind),
         }
     }
 
-    fn translate_code_block(
+    fn parse_code_block(
         &mut self,
         ir_fun: &mut IRFunction,
         ast_code_block: &ast::CodeBlock,
@@ -190,7 +193,7 @@ impl IR {
                     /*Return an expression(or () if no expression is provided)*/
                     let ret = match value.as_ref() {
                         Some(expr) => {
-                            let expr_reg = self.translate_expr(ir_fun, expr);
+                            let expr_reg = self.parse_expr(ir_fun, expr);
                             IROp::Return { value: expr_reg }
                         }
                         None => IROp::Return { value: IRReg::UNIT },
@@ -208,7 +211,7 @@ impl IR {
                     // It may have on AST level which inserts drops for affine types, but
                     // on IR level we just translate it into series of branches
 
-                    let blk = self.translate_code_block(ir_fun, nested_block);
+                    let blk = self.parse_code_block(ir_fun, nested_block);
                     let dest_reg = ir_fun.new_reg(ir_fun.get_block_type(blk));
                     block.ops.push(IROp::LocalCall {
                         block_id: blk,
@@ -217,6 +220,7 @@ impl IR {
                     last_reg = Some(dest_reg);
                 }
                 ast::ExprKind::Unit => {
+                    last_reg = Some(IRReg::UNIT)
                     // Unit() on top-expr(stmt) level is essentially nop.
                 }
             }
@@ -232,15 +236,31 @@ impl IR {
         ir_fun.insert_block(block)
     }
 
-    fn translate_ast_func(&mut self, ast_func: &ast::Function) -> Result<IRFunction, String> {
+    fn parse_type(&mut self, ast_type: &ast::Type) -> IRTypeId {
+        match ast_type {
+            ast::Type::Unit => IRTypeId::UNIT,
+            ast::Type::Never => IRTypeId::NEVER,
+            _ => unimplemented!("unimplemented type parsing for {ast_type:?}"),
+        }
+    }
+
+    fn parse_ast_func(&mut self, ast_func: &ast::Function) -> Result<IRFunction, String> {
         let mut fun = IRFunction::new(&ast_func.name, ast_func.decl_pos);
 
-        let body = match ast_func.body.as_ref() {
-            Some(body) => body,
+        match ast_func.body.as_ref() {
+            Some(body) => {
+                self.parse_code_block(&mut fun, body);
+            }
             None => unimplemented!("IR doesn't support extern functions"),
-        };
+        }
 
-        self.translate_code_block(&mut fun, body);
+        for arg in ast_func.r#type.args.iter() {
+            let type_id = self.parse_type(&arg.r#type);
+            // TODO: give register an argument flag, not just put in args
+            // TODO: give register (unique) name from AST
+            let arg_reg = fun.new_reg(type_id);
+            fun.args.push(arg_reg);
+        }
 
         let check = self.functions.get(&ast_func.name);
 
@@ -260,7 +280,7 @@ impl IR {
         let mut errs = vec![];
 
         for func in ast.functions.values() {
-            match ir.translate_ast_func(func) {
+            match ir.parse_ast_func(func) {
                 Ok(ir_fun) => {
                     ir.functions.insert(ir_fun.name.clone(), ir_fun);
                 }

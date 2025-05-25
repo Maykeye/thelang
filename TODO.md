@@ -6,12 +6,15 @@
   * [x] fix gram1
   * [x] add cst test for `foo(,); foo(a b,,)` etc (not ast)
   * [x] fix cst, ast
-  * [ ] add IR for loading args
+  * [ ] add IROp for loading args
+  * [ ] add IR type for arg
+  * [ ] add IR regs names
   * [ ] stub in nasm64
 * Write IR Types into output(?)
 * Add (virtual) register allocation, scope = function(done). SSA + local mem. Have several kind of registers like R1(actual virtual reg), M1(memory), A1 where one is operated on, second stores data perhaps on stack third(A1) is argument.
 * Add booleans type
 * Add registers mappings
+* Use enum error for error instead of string
 
 
 ## Delayed goals
