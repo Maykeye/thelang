@@ -18,7 +18,7 @@ fn test_empty_func_decl() {
     let empty_func = &make_empty_func_ast().functions["empty_func"];
     assert_eq!(empty_func.name, "empty_func");
     assert_eq!(empty_func.r#type.return_type, Type::Unit);
-    assert!(empty_func.r#type.args.is_empty());
+    assert!(empty_func.get_args().is_empty());
 }
 
 #[test]
@@ -75,13 +75,13 @@ fn impl_test_args_ok(source: &str, n: usize) {
     let ast = ast_from_text(source).unwrap();
     let fun = ast.functions.get("fun").unwrap();
     assert_eq!(
-        fun.args.len(),
+        fun.get_args().len(),
         n,
         "{source} should have {n} args, not {}",
-        fun.args.len()
+        fun.get_args().len()
     );
     for i in 0..n {
-        let arg = &fun.args[i];
+        let arg = &fun.get_args()[i];
         assert_eq!(arg.name, format!("a{i}"), "{source}: arg#{i} name mismatch");
     }
 }
@@ -113,12 +113,12 @@ fn impl_test_args_underscore(source: &str, is_underscore: &[bool]) {
     let fun = ast.functions.get("fun").unwrap();
     let n = is_underscore.len();
     assert_eq!(
-        fun.args.len(),
+        fun.get_args().len(),
         is_underscore.len(),
         "number of args mismatch\n{source}"
     );
     for i in 0..n {
-        let arg = &fun.args[i];
+        let arg = &fun.get_args()[i];
         if !is_underscore[i] {
             assert_eq!(arg.name, format!("a{i}"), "{source}: arg#{i} name mismatch");
         } else {
@@ -134,7 +134,7 @@ fn impl_test_args_underscore(source: &str, is_underscore: &[bool]) {
 #[test]
 fn test_args_underscore() {
     impl_test_args_underscore("fn fun(_:()){}", &[true]);
-    impl_test_args_underscore("fn fun(_:(),_:()){}", &[true]);
+    impl_test_args_underscore("fn fun(_:(),_:()){}", &[true, true]);
     impl_test_args_underscore(
         "fn fun(a0:(), _:(), a2:(), _:()){}",
         &[false, true, false, true],

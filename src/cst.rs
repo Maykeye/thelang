@@ -5,14 +5,16 @@ use crate::tokens::{Pos, Token, TokenKind, Tokens};
 /// Concrete syntax tree: functions
 #[derive(Debug)]
 pub struct Arg {
-    name: String,
-    r#type: Node,
+    pub name: String,
+    pub r#type: Node,
+    pub pos: Pos,
 }
 impl Arg {
-    fn new<N: Into<String>>(name: N, r#type: Node) -> Self {
+    fn new<N: Into<String>>(name: N, r#type: Node, pos: Pos) -> Self {
         Arg {
             name: name.into(),
             r#type,
+            pos,
         }
     }
 }
@@ -354,6 +356,7 @@ impl CST {
         while i < toks.len() {
             // IDENT : TYPE
             if let TokenKind::Identifier(ident) = &toks[i].kind {
+                let argument_pos = toks[i].pos;
                 i += 1;
                 if !toks.kind_eq(i, TokenKind::Colon) {
                     let msg = toks
@@ -369,7 +372,7 @@ impl CST {
                     Ok(arg_type) => arg_type,
                     Err(err) => return (i, Err(err)),
                 };
-                args.push(Arg::new(ident, arg_type));
+                args.push(Arg::new(ident, arg_type, argument_pos));
                 if toks[i].kind == TokenKind::Comma {
                     i += 1;
                 }

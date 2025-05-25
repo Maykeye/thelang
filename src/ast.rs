@@ -1,13 +1,14 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use crate::{
-    cst::{self, CST},
+    cst::{self, CST, Node},
     tokens::Pos,
 };
 
+// TODO: replace with Variable?
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct TpFunctionArg {
-    name: Option<String>,
+    name: String,
     r#type: Type,
 }
 
@@ -92,7 +93,12 @@ pub struct Function {
     pub name: String,
     pub r#type: TpFunction,
     pub body: Option<CodeBlock>,
-    pub args: Vec<Variable>,
+}
+
+impl Function {
+    fn get_args(&self) -> &[TpFunctionArg] {
+        &self.r#type.args
+    }
 }
 
 #[derive(Debug)]
@@ -107,6 +113,48 @@ impl AST {
         }
     }
 
+    fn parse_type<'a>(&mut self, cst: &'a Node, errors: &mut Vec<String>) -> Result<Type, ()> {
+        match cst.kind {
+            cst::NodeKind::Unit => Ok(Type::Unit),
+            _ => {
+                unimplemented!("TBD: return type NYI");
+            }
+        }
+    }
+
+    fn parse_cst_function_declarations_args(
+        &mut self,
+        cst_func: &cst::Fn,
+        errors: &mut Vec<String>,
+    ) -> Vec<TpFunctionArg> {
+        let mut args_tp: Vec<TpFunctionArg> = vec![];
+        for (i, cst_arg) in cst_func.args.iter().enumerate() {
+            // Rename "_" to unique identifier.
+            let name = match cst_arg.name.as_str() {
+                "_" => format!("$arg${i}"),
+                other => other.to_string(),
+            };
+
+            // Check argument name overshadowing
+            let same_name_exist = args_tp.iter().find(|arg| arg.name == name).is_some();
+            if same_name_exist {
+                let msg = cst_arg
+                    .pos
+                    .report(format!("Argument {} already exists", name));
+                errors.push(msg);
+            }
+
+            // Get type
+            let r#type = self
+                .parse_type(&cst_arg.r#type, errors)
+                .unwrap_or(Type::Unit);
+
+            // And finally put it into function arguments
+            args_tp.push(TpFunctionArg { name, r#type });
+        }
+        args_tp
+    }
+
     fn parse_cst_function_declarations<'a>(
         &mut self,
         cst: &'a CST,
@@ -115,8 +163,6 @@ impl AST {
         let mut mappings = HashMap::default();
         // Prepare functions headers
         for cst_func in cst.functions.values() {
-            let args = vec![];
-
             // Ensure such function doesn't override existing function
             let full_name = cst_func.name.clone();
             if let Some(other) = self.functions.get(&full_name) {
@@ -128,20 +174,16 @@ impl AST {
                 continue;
             }
 
-            // Parse arguments
-            if !cst_func.args.is_empty() {
-                unimplemented!("TBD: arguments NYI")
-            }
-
+            let args_tp = self.parse_cst_function_declarations_args(&cst_func, errors);
             // Parse return type
-            let func_ret_type = match cst_func.return_type {
-                Some(_) => unimplemented!("TBD: return type NYI"),
+            let func_ret_type = match &cst_func.return_type {
+                Some(node) => self.parse_type(node, errors).unwrap_or(Type::Unit),
                 None => Type::Unit,
             };
 
             // Assign function type to the global symbol
             let tp_func = TpFunction {
-                args,
+                args: args_tp,
                 return_type: func_ret_type,
             };
             let func = Function {
@@ -149,7 +191,6 @@ impl AST {
                 name: full_name.clone(),
                 r#type: tp_func,
                 body: None,
-                args: vec![],
             };
 
             mappings.insert(full_name.clone(), cst_func);
