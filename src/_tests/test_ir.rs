@@ -37,7 +37,7 @@ fn test_arg_types() {
 }
 
 #[test]
-fn test_nested_return() {
+fn test_nested_implicit_return() {
     let source = " fn main() { {()} } ";
     let ir = IR::from_thelan(source).unwrap();
     let expected = "\
@@ -51,4 +51,60 @@ ret $r0
 
 END FUNC main\n";
     assert_eq!(ir.to_text(), expected);
+}
+
+#[test]
+fn test_return_arg() {
+    fn r#impl(source: &str, return_expr: usize, arg_used: usize) {
+        let ir = IR::from_thelan(source).expect(&format!("unable to get ast from {source}"));
+        let func = ir.functions.get("func").unwrap();
+        let returned_reg = func.args[arg_used];
+        let block = func.blocks.get(0).unwrap();
+        match block.ops[return_expr] {
+            IROp::Return { value } => {
+                assert_eq!(
+                    value, returned_reg,
+                    "arg#{arg_used}/reg{returned_reg} expected, got {value}"
+                )
+            }
+            _ => panic!("return expected, not {source}"),
+        }
+    }
+
+    r#impl("fn func(a1: (), a2:()){return a1}", 0, 0);
+    r#impl("fn func(a1: (), a2:()){return a2}", 0, 1);
+    r#impl("fn func(a1: (), a2:()){return a1;}", 0, 0);
+    r#impl("fn func(a1: (), a2:()){return a2;}", 0, 1);
+    r#impl("fn func(a1: (), a2:()){a1}", 0, 0);
+    r#impl("fn func(a1: (), a2:()){a2}", 0, 1);
+    r#impl("fn func(a1: (), a2:()){a1;a2}", 1, 0);
+    r#impl("fn func(a1: (), a2:()){a2;a1}", 1, 1);
+    r#impl("fn func(a1: (), a2:()){return a1;a2}", 1, 1);
+    r#impl("fn func(a1: (), a2:()){return a2;a1;}", 1, 0);
+}
+
+#[test]
+fn test_return_r0() {
+    fn r#impl(source: &str) {
+        let ir = IR::from_thelan(source).expect(&format!("unable to get ast from {source}"));
+        let func = ir.functions.get("func").unwrap();
+        let block = func.blocks.get(0).unwrap();
+        match block.ops.last().unwrap() {
+            IROp::Return { value } => {
+                assert_eq!(
+                    *value,
+                    IRReg::UNIT,
+                    "context should be discarded in favor of builtin unit register R0"
+                )
+            }
+            _ => panic!("return expected, not {source}"),
+        }
+    }
+
+    r#impl("fn func(a1: (), a2:()){a1;}");
+    r#impl("fn func(a1: (), a2:()){a2;}");
+    r#impl("fn func(a1: (), a2:()){();a1;}");
+    r#impl("fn func(a1: (), a2:()){();a2;}");
+    r#impl("fn func(a1: (), a2:()){();();a1;}");
+    r#impl("fn func(a1: (), a2:()){();();a2;}");
 }
