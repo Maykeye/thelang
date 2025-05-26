@@ -317,6 +317,7 @@ impl CST {
         Self::parse_expr_unary(toks, i)
     }
 
+    /// Wrapper around `parse_expr_opt`, but the expression is required
     fn parse_expr_required(toks: &Tokens, i: usize) -> (usize, Result<Node, String>) {
         let parsed = Self::parse_expr_opt(toks, i);
         match parsed {

@@ -2,9 +2,12 @@ use crate::cst::NodeKind;
 use crate::tokens::Tokens;
 use crate::{CST, tokenize};
 
-fn cst_from_text(text: &str) -> CST {
+fn cst_fun_from_text(text: &str, func_name: &str) -> crate::cst::Fn {
     let t = tokenize(text).expect(&format!("Lexer failed for {text}"));
-    CST::from_tokens(&t).expect(&format!("CST failed for <<<\n{text}\n>>>"))
+    let mut cst = CST::from_tokens(&t).expect(&format!("CST failed for <<<\n{text}\n>>>"));
+    cst.functions.remove(func_name).expect(&format!(
+        "can't extract function {func_name} for <<<\n{text}\n>>>"
+    ))
 }
 fn cst_err_from_text(text: &str) -> (CST, Vec<String>) {
     let t = tokenize(text).unwrap();
@@ -47,8 +50,7 @@ fn test_err_rec_idx() {
 #[test]
 fn test_ret() {
     fn r#impl(text: &str) {
-        let cst = cst_from_text(text);
-        let func = cst.functions.get("hello").unwrap();
+        let func = cst_fun_from_text(text, "hello");
         let body = func.body.as_ref().unwrap();
         let node0 = &body.nodes[0].kind;
 
@@ -92,8 +94,7 @@ fn test_func_block_err_recovery() {
 
 #[test]
 fn test_nested_blocks() {
-    let cst = cst_from_text("fn fun(){{};{{}}}");
-    let body = cst.functions.get("fun").unwrap();
+    let body = cst_fun_from_text("fn fun(){{};{{}}}", "fun");
     let body = body.body.as_ref().unwrap().as_ref();
     assert_eq!(body.nodes.len(), 2);
     match &body.nodes[0].kind {
@@ -119,8 +120,8 @@ fn test_nested_blocks() {
 #[test]
 fn test_arg_count() {
     fn r#impl(source: &str, n: usize) {
-        let cst = cst_from_text(source);
-        assert_eq!(cst.functions["fun"].args.len(), n, "source: {source}");
+        let func = cst_fun_from_text(source, "fun");
+        assert_eq!(func.args.len(), n, "source: {source}");
     }
     r#impl("fn fun(){}", 0);
     r#impl("fn fun(a:a){}", 1);
@@ -144,14 +145,10 @@ fn test_err_with_args() {
 #[test]
 fn test_arg_names() {
     fn r#impl(source: &str, args: &[(&str, &str)]) {
-        let cst = cst_from_text(source);
-        assert_eq!(
-            cst.functions["fun"].args.len(),
-            args.len(),
-            "source: {source}"
-        );
+        let fun = cst_fun_from_text(source, "fun");
+        assert_eq!(fun.args.len(), args.len(), "source: {source}");
         for i in 0..args.len() {
-            let arg = &cst.functions["fun"].args[i];
+            let arg = &fun.args[i];
             assert_eq!(
                 arg.name, args[i].0,
                 "arg#{i} name mismatch; source: {source}"
