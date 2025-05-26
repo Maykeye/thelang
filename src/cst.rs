@@ -89,6 +89,13 @@ impl Node {
         Self { kind, pos }
     }
 
+    fn new_identifier<S: Into<String>>(identifier: S, pos: Pos) -> Node {
+        Self {
+            kind: NodeKind::Identifier(identifier.into()),
+            pos,
+        }
+    }
+
     pub fn new_unit(pos: Pos) -> Node {
         Self {
             kind: NodeKind::Unit,
@@ -245,11 +252,10 @@ impl CST {
     ///           |   IDENT
     ///           |   '{' CODE_BLOCK '}'
     // TODO: make nomal return type
-    fn parse_term_expr(toks: &Tokens, mut i: usize) -> OptExprParsingResult {
+    fn parse_expr_term(toks: &Tokens, mut i: usize) -> OptExprParsingResult {
         // ()
         if toks.kind_eq(i, TokenKind::LParen) && toks.kind_eq(i + 1, TokenKind::RParen) {
-            i += 2;
-            return Some((i, Ok(Node::new(NodeKind::Unit, toks[i - 2].pos))));
+            return Some((i + 2, Ok(Node::new_unit(toks[i].pos))));
         }
 
         // ( EXPR )
@@ -272,7 +278,8 @@ impl CST {
 
         // IDENT
         if let Some(ident) = toks.get_identifier(i) {
-            unimplemented!();
+            let node = Node::new_identifier(ident, toks[i].pos);
+            return Some((i + 1, Ok(node)));
         }
 
         // LCurly. Nested code-block.
@@ -308,7 +315,7 @@ impl CST {
             return Some((i, Ok(return_value)));
         }
 
-        Self::parse_term_expr(toks, i)
+        Self::parse_expr_term(toks, i)
     }
 
     /// Parse an expression
@@ -607,3 +614,7 @@ impl CST {
 #[cfg(test)]
 #[path = "_tests/test_cst.rs"]
 mod test_cst;
+
+#[cfg(test)]
+#[path = "_tests/test_cst_expr.rs"]
+mod test_cst_expr;

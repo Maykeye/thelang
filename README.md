@@ -43,6 +43,7 @@ It can create nasm64 linux assembler code for absolutely empty functions
  * EXPR_TERM ::= `()` (*type unit*) 
    | `{` CODE_BLOCK `}`
    | IDENTIFIER
+   | `(` EXPR `)`
 
 * IDENTIFIER ::=  ( alpha | `_` ) { alpha | digit | `_` | `$` }
 
