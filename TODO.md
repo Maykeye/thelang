@@ -6,6 +6,7 @@
   * [x] fix gram1
   * [x] add cst test for `foo(,); foo(a b,,)` etc (not ast)
   * [x] fix cst, ast
+  * [ ] add ast for using arguments in expr
   * [ ] add IROp for loading args
   * [ ] add IR type for arg
   * [ ] add IR regs names
@@ -39,4 +40,4 @@
 ## Much much much later
 * We need syntax for destructive binding for `let` eg `let mut i=10; let (existing i, new j) = (10, 20)`
 * Harmonize IR::to_text(->String) with codegen::to_text(->vec<string>)
-
+* Rename CST to something more correct: TLAST(TypelessAST/BaseTree or something)

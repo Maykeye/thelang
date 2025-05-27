@@ -3,6 +3,8 @@ use crate::ast::{ExprKind, Type};
 use crate::tokens::Pos;
 use crate::{cst::CST, lexer::tokenize};
 
+use super::ScopeTracker;
+
 fn ast_from_text(source: &str) -> Result<AST, (AST, Vec<String>)> {
     let toks = tokenize(source).expect(&format!("Lexer failed for {source}"));
     let cst = CST::from_tokens(&toks).expect(&format!("CST failed for {source}"));
@@ -139,4 +141,34 @@ fn test_args_underscore() {
         "fn fun(a0:(), _:(), a2:(), _:()){}",
         &[false, true, false, true],
     );
+}
+
+#[test]
+fn test_scoper() {
+    let mut scope = ScopeTracker::new();
+
+    let check = |scope: &ScopeTracker, value: &str| match scope.resolve_var("hello") {
+        Some(x) => {
+            let x = x;
+            assert_eq!(x.as_str(), value, "{:?}", scope);
+        }
+        None => panic!("variable `hello` not found in {:?}", scope),
+    };
+
+    scope.push_scope();
+    assert_eq!(scope.resolve_var("hello"), None);
+    scope.declare_var("hello");
+    check(&scope, "hello");
+    scope.declare_var("hello");
+    check(&scope, "hello$1");
+
+    scope.push_scope();
+    scope.declare_var("hello");
+    check(&scope, "hello$2");
+    scope.pop_scope();
+
+    check(&scope, "hello$1");
+    scope.declare_var("hello");
+    check(&scope, "hello$3");
+    scope.pop_scope();
 }

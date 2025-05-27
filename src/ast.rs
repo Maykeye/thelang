@@ -106,6 +106,63 @@ pub struct AST {
     pub functions: HashMap<String, Function>,
 }
 
+#[derive(Debug)]
+struct ScopeTracker {
+    /// Keep track of local variables with always unique names
+    used_variables: HashMap<String, usize>,
+    scopes: Vec<HashMap<String, String>>,
+}
+
+impl ScopeTracker {
+    fn new() -> Self {
+        Self {
+            used_variables: Default::default(),
+            scopes: vec![],
+        }
+    }
+    fn declare_var(&mut self, name: &str) -> String {
+        let new_used = match self.used_variables.get_mut(name) {
+            Some(old) => {
+                *old += 1;
+                *old
+            }
+            None => {
+                self.used_variables.insert(name.to_string(), 0);
+                0
+            }
+        };
+
+        let new_name = if new_used == 0 {
+            name.to_string()
+        } else {
+            format!("{name}${new_used}")
+        };
+
+        let scope = self
+            .scopes
+            .last_mut()
+            .expect("declaring variables with no current scopes");
+        scope.insert(name.to_string(), new_name.clone());
+        new_name
+    }
+
+    fn resolve_var(&self, name: &str) -> Option<&String> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(ident) = scope.get(name) {
+                return Some(ident);
+            }
+        }
+        None
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(Default::default());
+    }
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+}
+
 impl AST {
     pub fn new() -> Self {
         Self {
@@ -259,6 +316,8 @@ impl AST {
                     );
                     code_block.exprs.push(expr);
                 }
+
+                cst::NodeKind::Identifier(ident) => {}
 
                 cst::NodeKind::Unit => {
                     code_block
