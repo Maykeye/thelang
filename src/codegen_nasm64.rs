@@ -199,7 +199,7 @@ impl CodeGenNasm64 {
                 IROp::Return { value: irreg } => {
                     // TODO: once we'll implement virtual registers and mappings, we'll do
                     // mov rax, [rel irreg.offset]
-                    let tp = ir_func.get_reg_type(*irreg);
+                    let tp = ir_func.get_reg_data(*irreg).r#type;
                     assert!(
                         (tp == IRTypeId::UNIT) || (tp == IRTypeId::NEVER),
                         "currently only () register is supported"

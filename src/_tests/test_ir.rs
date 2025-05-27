@@ -32,7 +32,7 @@ fn test_arg_types() {
     let ir = IR::from_thelan(source).unwrap();
     let func = ir.functions.get("main").unwrap();
     assert_eq!(func.args.len(), 1);
-    assert_eq!(func.get_reg_type(func.args[0]), IRTypeId::UNIT);
+    assert_eq!(func.get_reg_data(func.args[0]).r#type, IRTypeId::UNIT);
     assert!(func.args[0].0 >= IRReg::BUILTIN_REGS_COUNT);
 }
 
@@ -55,32 +55,34 @@ END FUNC main\n";
 
 #[test]
 fn test_return_arg() {
-    fn r#impl(source: &str, return_expr: usize, arg_used: usize) {
+    fn r#impl(source: &str, return_expr: usize, reg_name: &str) {
         let ir = IR::from_thelan(source).expect(&format!("unable to get ast from {source}"));
         let func = ir.functions.get("func").unwrap();
-        let returned_reg = func.args[arg_used];
         let block = func.blocks.get(0).unwrap();
         match block.ops[return_expr] {
             IROp::Return { value } => {
+                let data = func.get_reg_data(value);
                 assert_eq!(
-                    value, returned_reg,
-                    "arg#{arg_used}/reg{returned_reg} expected, got {value}"
+                    data.name,
+                    Some(reg_name.to_string()),
+                    "Register with a name {reg_name} expected, got {data:?}"
                 )
             }
             _ => panic!("return expected, not {source}"),
         }
     }
 
-    r#impl("fn func(a1: (), a2:()){return a1}", 0, 0);
-    r#impl("fn func(a1: (), a2:()){return a2}", 0, 1);
-    r#impl("fn func(a1: (), a2:()){return a1;}", 0, 0);
-    r#impl("fn func(a1: (), a2:()){return a2;}", 0, 1);
-    r#impl("fn func(a1: (), a2:()){a1}", 0, 0);
-    r#impl("fn func(a1: (), a2:()){a2}", 0, 1);
-    r#impl("fn func(a1: (), a2:()){a1;a2}", 1, 0);
-    r#impl("fn func(a1: (), a2:()){a2;a1}", 1, 1);
-    r#impl("fn func(a1: (), a2:()){return a1;a2}", 1, 1);
-    r#impl("fn func(a1: (), a2:()){return a2;a1;}", 1, 0);
+    r#impl("fn func(a1: (), a2:()){return a1}", 0, "a1");
+    r#impl("fn func(a1: (), a2:()){return a2}", 0, "a2");
+    r#impl("fn func(a1: (), a2:()){return a1;}", 0, "a1");
+    r#impl("fn func(a1: (), a2:()){return a2;}", 0, "a2");
+    r#impl("fn func(a1: (), a2:()){a1}", 0, "a1");
+    r#impl("fn func(a1: (), a2:()){a2}", 0, "a2");
+    r#impl("fn func(a1: (), a2:()){a1;a2}", 1, "a2");
+    r#impl("fn func(a1: (), a2:()){a2;a1}", 1, "a1");
+    r#impl("fn func(a1: (), a2:()){return a1;a2}", 1, "a2");
+    r#impl("fn func(a1: (), a2:()){return a2;a1;}", 1, "a2");
+    r#impl("fn func(a1: (), a2:(), a3:()){a2;a1;a3}", 1, "a3");
 }
 
 #[test]

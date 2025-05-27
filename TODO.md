@@ -6,7 +6,7 @@
   * [x] fix gram1
   * [x] add cst test for `foo(,); foo(a b,,)` etc (not ast)
   * [x] fix cst, ast
-  * [ ] add ast for using arguments in expr
+  * [x] add ast for using arguments in expr
   * [ ] add IROp for loading args
   * [ ] add IR type for arg
   * [ ] add IR regs names
@@ -23,15 +23,17 @@
 ## Delayed goals
 * CST Expr tests: make tests for each grammar rule, where possible, where grammar is incorrect.  Each grammar rule, if broken, should recover, not loop eternally
 * Add lean4 backend
+* scopetrackerhandler with Drop to push/pop scope
 * Add *the* integer type (only `u64` for now )
 * Add comparison(at least `<`) for integer
 * Add invariants (requires, ensures, invariant, etc)
 * Produce invariants to Lean4 for formal proof of our language programs.
 * Local variables
+* AST shoudld have NodeKind::Argument(argument_num) instead of argument_name; so var_data.is_arg should be replaced with arg:Option<int>
 * Add AST type "Any" to which anything can be assiigned, so if function/var type is not parsed, we can continue parsing the rest
 
 ## Much later goals
-* overshadowing local variables (`let a = 1; let a = 1`); document that '_' has internal name and using r#$arg$1 will overshadow it
+* AST should have TypeId instead of cloning type on every step
 * Other types
 * Memory allocation
 * Generics

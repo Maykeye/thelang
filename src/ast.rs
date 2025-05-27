@@ -31,13 +31,15 @@ pub enum Type {
 pub struct Variable {
     pub name: String,
     pub r#type: Option<Type>,
+    pub is_arg: bool,
 }
 
 impl Variable {
-    pub fn new<N: Into<String>>(name: N, r#type: Option<Type>) -> Self {
+    pub fn new<N: Into<String>>(name: N, r#type: Option<Type>, is_arg: bool) -> Self {
         Self {
             name: name.into(),
             r#type,
+            is_arg,
         }
     }
 }
@@ -47,6 +49,7 @@ pub enum ExprKind {
     Unit,
     Return(Option<Box<Expr>>),
     CodeBlock(CodeBlock),
+    Argument(String),
 }
 
 #[derive(Debug)]
@@ -163,6 +166,20 @@ impl ScopeTracker {
     }
 }
 
+struct ScopedVariablesData {
+    scopes: ScopeTracker,
+    data: HashMap<String, Variable>,
+}
+
+impl ScopedVariablesData {
+    pub fn new() -> Self {
+        Self {
+            scopes: ScopeTracker::new(),
+            data: HashMap::new(),
+        }
+    }
+}
+
 impl AST {
     pub fn new() -> Self {
         Self {
@@ -269,14 +286,66 @@ impl AST {
         return false;
     }
 
-    fn parse_expr(cst_expr: &cst::Node) -> Expr {
+    fn parse_expr(
+        cst_expr: &cst::Node,
+        vars: &ScopedVariablesData,
+        errors: &mut Vec<String>,
+    ) -> Result<Expr, ()> {
         match &cst_expr.kind {
-            cst::NodeKind::Unit => Expr::new(ExprKind::Unit, cst_expr.pos, Some(Type::Unit)),
+            cst::NodeKind::Unit => Ok(Expr::new(ExprKind::Unit, cst_expr.pos, Some(Type::Unit))),
+            cst::NodeKind::Identifier(name) => {
+                let name = match vars.scopes.resolve_var(name) {
+                    Some(name) => name,
+                    None => {
+                        let msg = cst_expr.pos.report(format!("unknown variable {name}"));
+                        errors.push(msg);
+                        return Err(());
+                    }
+                };
+
+                let var_data = vars
+                    .data
+                    .get(name)
+                    .expect("internal error: known variable has no known type");
+                let r#type = match &var_data.r#type {
+                    Some(tp) => tp.clone(),
+                    None => {
+                        let msg = cst_expr
+                            .pos
+                            .report(format!("variable type for {name} is not known"));
+                        errors.push(msg);
+                        return Err(());
+                    }
+                };
+
+                let kind = if !var_data.is_arg {
+                    unimplemented!("local vars nyi; only args")
+                } else {
+                    ExprKind::Argument(name.clone())
+                };
+
+                Ok(Expr::new(kind, cst_expr.pos, Some(r#type)))
+            }
             _ => unimplemented!("nyi"),
         }
     }
 
-    fn parse_code_block(cst_cb: &cst::CodeBlock, errors: &mut Vec<String>) -> Option<CodeBlock> {
+    fn parse_code_block(
+        cst_cb: &cst::CodeBlock,
+        vars: &mut ScopedVariablesData,
+        errors: &mut Vec<String>,
+    ) -> Option<CodeBlock> {
+        vars.scopes.push_scope();
+        let data = Self::parse_code_block_impl(cst_cb, vars, errors);
+        vars.scopes.pop_scope();
+        data
+    }
+
+    fn parse_code_block_impl(
+        cst_cb: &cst::CodeBlock,
+        vars: &mut ScopedVariablesData,
+        errors: &mut Vec<String>,
+    ) -> Option<CodeBlock> {
         let pos = cst_cb.pos;
         let mut code_block = CodeBlock::new(pos);
         // Empty body = return ()
@@ -288,19 +357,26 @@ impl AST {
         }
 
         // Convert CST untyped nodes to AST typed nodes
-        for node in cst_cb.nodes.iter() {
-            match &node.kind {
+        for cst_node in cst_cb.nodes.iter() {
+            match &cst_node.kind {
                 cst::NodeKind::Return(val) => {
                     // Parse conversion
-                    let expr = Self::parse_expr(val);
+                    let expr = match Self::parse_expr(val, vars, errors) {
+                        Ok(expr) => expr,
+                        Err(()) => return None,
+                    };
 
                     // If it's the second return type, make sure they are convertible
-                    assert!(expr.r#type.is_some(), "{}", node.pos.report("unknown type"));
+                    assert!(
+                        expr.r#type.is_some(),
+                        "{}",
+                        cst_node.pos.report("unknown type")
+                    );
                     if let Some(current_return_type) = code_block.return_type {
                         let new_type = expr.r#type.as_ref().unwrap();
                         // TODO: return or panic of expt type not yet defined?
                         Self::check_type_implicit_conversion(
-                            node.pos,
+                            cst_node.pos,
                             new_type,
                             &current_return_type,
                             errors,
@@ -317,16 +393,8 @@ impl AST {
                     code_block.exprs.push(expr);
                 }
 
-                cst::NodeKind::Identifier(ident) => {}
-
-                cst::NodeKind::Unit => {
-                    code_block
-                        .exprs
-                        .push(Expr::new(ExprKind::Unit, node.pos, Some(Type::Unit)));
-                }
-
                 cst::NodeKind::CodeBlock(cst_nested_cb) => {
-                    let new_cb = match Self::parse_code_block(cst_nested_cb, errors) {
+                    let new_cb = match Self::parse_code_block(cst_nested_cb, vars, errors) {
                         Some(cb) => cb,
                         None => return None,
                     };
@@ -355,7 +423,15 @@ impl AST {
                     code_block.exprs.push(new_expr);
                 }
 
-                _ => unimplemented!("tbd: parse_code_block: {:?}", &node.kind),
+                _ => {
+                    // TODO: collect errors and return None in the end
+                    match Self::parse_expr(cst_node, vars, errors) {
+                        Ok(expr) => {
+                            code_block.exprs.push(expr);
+                        }
+                        Err(()) => return None,
+                    };
+                }
             }
         }
 
@@ -384,7 +460,21 @@ impl AST {
                 }
             };
 
-            let mut code_block = match Self::parse_code_block(cst_body, errors) {
+            let mut vars = ScopedVariablesData::new();
+            vars.scopes.push_scope();
+            for arg in func.get_args() {
+                let name = vars.scopes.declare_var(&arg.name);
+                vars.data.insert(
+                    name.clone(),
+                    Variable {
+                        name: name,
+                        r#type: Some(arg.r#type.clone()),
+                        is_arg: true,
+                    },
+                );
+            }
+
+            let mut code_block = match Self::parse_code_block(cst_body, &mut vars, errors) {
                 Some(blk) => blk,
                 None => {
                     continue;

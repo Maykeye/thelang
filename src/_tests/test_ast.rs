@@ -172,3 +172,25 @@ fn test_scoper() {
     check(&scope, "hello$3");
     scope.pop_scope();
 }
+
+#[test]
+fn test_return_arg() {
+    let ast = ast_from_text("fn main(ar1: (), ar2: ()){ar1;ar2}").unwrap();
+    let func = ast.functions.get("main").unwrap();
+    let body = func.body.as_ref().unwrap();
+    assert_eq!(body.exprs.len(), 2);
+
+    let expr = &body.exprs[0];
+    let arg = match &expr.kind {
+        ExprKind::Argument(name) => name,
+        _ => panic!("Unexpected expr1 {expr:?}"),
+    };
+    assert_eq!(arg, "ar1");
+
+    let expr = &body.exprs[1];
+    let arg = match &expr.kind {
+        ExprKind::Argument(name) => name,
+        _ => panic!("Unexpected expr2 {expr:?}"),
+    };
+    assert_eq!(arg, "ar2");
+}

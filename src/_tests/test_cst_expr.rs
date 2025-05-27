@@ -78,6 +78,13 @@ fn test_expr_term_codeblock() {
 }
 
 #[test]
+fn test_expr_term_identifier() {
+    test_expr("var_name", 0, |node| {
+        assert!(matches!(&node, NodeKind::Identifier(x) if x == "var_name"));
+    });
+}
+
+#[test]
 fn test_expr_term_parens() {
     test_expr("(abc)", 1, |node| {
         assert!(matches!(

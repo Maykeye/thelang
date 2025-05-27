@@ -603,6 +603,7 @@ impl CST {
                 }
             }
         }
+
         if errors.is_empty() {
             Ok(cst)
         } else {

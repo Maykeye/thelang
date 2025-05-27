@@ -21,6 +21,23 @@ impl IRReg {
     pub const BUILTIN_REGS_COUNT: usize = 1;
 }
 
+#[derive(Debug)]
+pub struct IRRegData {
+    pub id: IRReg,
+    pub name: Option<String>,
+    pub r#type: IRTypeId,
+}
+
+impl IRRegData {
+    pub fn new(id: IRReg, name: Option<String>, r#type: IRTypeId) -> Self {
+        Self { id, name, r#type }
+    }
+
+    pub fn new_unit() -> IRRegData {
+        Self::new(IRReg::UNIT, Some("r()".to_string()), IRTypeId::UNIT)
+    }
+}
+
 impl Display for IRReg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "$r{}", self.0)
@@ -71,7 +88,7 @@ pub struct IRFunction {
     pub name: String,
     pub blocks: Vec<IRCodeBlock>,
     pub args: Vec<IRReg>,
-    pub regs: Vec<IRTypeId>,
+    pub regs: Vec<IRRegData>,
 }
 
 impl IRFunction {
@@ -80,14 +97,14 @@ impl IRFunction {
             name: name.into(),
             blocks: vec![],
             pos,
-            regs: vec![IRTypeId::UNIT],
+            regs: vec![IRRegData::new_unit()],
             args: vec![],
         }
     }
 
-    fn new_reg(&mut self, type_id: IRTypeId) -> IRReg {
+    fn new_reg(&mut self, type_id: IRTypeId, name: Option<String>) -> IRReg {
         let reg_id = IRReg(self.regs.len());
-        self.regs.push(type_id);
+        self.regs.push(IRRegData::new(reg_id, name, type_id));
         reg_id
     }
 
@@ -119,8 +136,8 @@ impl IRFunction {
         id
     }
 
-    pub fn get_reg_type(&self, reg: IRReg) -> IRTypeId {
-        self.regs[reg.0]
+    pub fn get_reg_data(&self, reg: IRReg) -> &IRRegData {
+        &self.regs[reg.0]
     }
     pub fn get_block_type(&self, block: IRCodeBlockId) -> IRTypeId {
         self.blocks[block.0].type_id
@@ -212,7 +229,7 @@ impl IR {
                     // on IR level we just translate it into series of branches
 
                     let blk = self.parse_code_block(ir_fun, nested_block);
-                    let dest_reg = ir_fun.new_reg(ir_fun.get_block_type(blk));
+                    let dest_reg = ir_fun.new_reg(ir_fun.get_block_type(blk), None);
                     block.ops.push(IROp::LocalCall {
                         block_id: blk,
                         dest: dest_reg,
@@ -223,6 +240,9 @@ impl IR {
                     last_reg = Some(IRReg::UNIT)
                     // Unit() on top-expr(stmt) level is essentially nop.
                 }
+                ast::ExprKind::Argument(name) => {
+                    unimplemented!()
+                }
             }
         }
 
@@ -230,7 +250,7 @@ impl IR {
             let return_reg = last_reg.unwrap_or(IRReg::UNIT);
             let op = IROp::Return { value: return_reg };
             block.ops.push(op);
-            block.type_id = ir_fun.get_reg_type(return_reg);
+            block.type_id = ir_fun.get_reg_data(return_reg).r#type;
         }
 
         ir_fun.insert_block(block)
@@ -258,7 +278,7 @@ impl IR {
             let type_id = self.parse_type(&arg.r#type);
             // TODO: give register an argument flag, not just put in args
             // TODO: give register (unique) name from AST
-            let arg_reg = fun.new_reg(type_id);
+            let arg_reg = fun.new_reg(type_id, Some(arg.name.clone()));
             fun.args.push(arg_reg);
         }
 
