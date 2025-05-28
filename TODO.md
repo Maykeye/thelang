@@ -7,9 +7,9 @@
   * [x] add cst test for `foo(,); foo(a b,,)` etc (not ast)
   * [x] fix cst, ast
   * [x] add ast for using arguments in expr
-  * [ ] add IROp for loading args
-  * [ ] add IR type for arg
-  * [ ] add IR regs names
+  * [x] add IROp for loading args
+  * [x] add IR type for arg
+  * [x] add IR regs names
   * [ ] stub in nasm64
 * Merge cst/error_recovery_find_next_block_end/error_recovery_find_current_block_end/error_recovery_find_expr_end
 * Write IR Types into output(?)

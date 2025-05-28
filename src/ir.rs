@@ -34,13 +34,7 @@ impl IRRegData {
     }
 
     pub fn new_unit() -> IRRegData {
-        Self::new(IRReg::UNIT, Some("r()".to_string()), IRTypeId::UNIT)
-    }
-}
-
-impl Display for IRReg {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "$r{}", self.0)
+        Self::new(IRReg::UNIT, Some("()".to_string()), IRTypeId::UNIT)
     }
 }
 
@@ -62,7 +56,14 @@ pub enum IROp {
         dest: IRReg,
     },
     /// Return a register from the function
-    Return { value: IRReg },
+    Return {
+        value: IRReg,
+    },
+
+    LoadArg {
+        arg: IRReg,
+        dest: IRReg,
+    },
 }
 
 #[derive(Debug)]
@@ -142,6 +143,15 @@ impl IRFunction {
     pub fn get_block_type(&self, block: IRCodeBlockId) -> IRTypeId {
         self.blocks[block.0].type_id
     }
+
+    pub fn format_reg_name(&self, reg: IRReg) -> String {
+        let data = self.get_reg_data(reg);
+        // TODO: different prefix for different registers
+        match &data.name {
+            Some(name) => format!("$r{}:<{name}>", reg.0),
+            None => format!("$r{}", reg.0),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -169,9 +179,14 @@ impl IR {
                 for op in blk.ops.iter() {
                     let ins = match op {
                         IROp::LocalCall { block_id, dest } => {
-                            format!("{} = call {}", dest, block_id)
+                            format!("{} = call {}", func.format_reg_name(*dest), block_id)
                         }
-                        IROp::Return { value } => format!("ret {}", value),
+                        IROp::Return { value } => format!("ret {}", func.format_reg_name(*value)),
+                        IROp::LoadArg { arg, dest } => format!(
+                            "{} = ld.arg {}",
+                            func.format_reg_name(*dest),
+                            func.format_reg_name(*arg),
+                        ),
                     };
                     s.push_str(&ins);
                     s.push('\n');
@@ -185,9 +200,49 @@ impl IR {
         s
     }
 
-    fn parse_expr(&mut self, ir_fun: &mut IRFunction, ast_expr: &ast::Expr) -> IRReg {
+    fn map_ast_arg_index_to_ir_arg_index(
+        &mut self,
+        ast_arg_index: usize,
+        _ir_fun: &IRFunction,
+        _ast_func: &ast::Function,
+    ) -> usize {
+        ast_arg_index
+    }
+
+    fn parse_expr(
+        &mut self,
+        ast_expr: &ast::Expr,
+        ir_fun: &mut IRFunction,
+        ir_block: &mut IRCodeBlock,
+        ast_func: &ast::Function,
+    ) -> IRReg {
         match &ast_expr.kind {
             ast::ExprKind::Unit => IRReg::UNIT,
+            ast::ExprKind::Argument(name) => {
+                let ast_arg_idx = ast_func
+                    .get_argument_index_by_name(&name)
+                    .unwrap_or_else(|| {
+                        panic!("Internal error: AST was passed with inconsistent arguments: {name}")
+                    });
+                let ir_arg_idx =
+                    self.map_ast_arg_index_to_ir_arg_index(ast_arg_idx, ir_fun, ast_func);
+
+                let arg_reg = *ir_fun.args.get(ir_arg_idx).unwrap_or_else(|| {
+                    panic!(
+                        "Internal error: IR  has inconsistent argument @{name}: {:?}",
+                        ir_fun.args
+                    )
+                });
+                let data = ir_fun.get_reg_data(arg_reg);
+                let op_reg = ir_fun.new_reg(data.r#type, None);
+
+                ir_block.ops.push(IROp::LoadArg {
+                    arg: arg_reg,
+                    dest: op_reg,
+                });
+
+                return op_reg;
+            }
             _ => unimplemented!("expression parser nyi for {:?}", &ast_expr.kind),
         }
     }
@@ -195,6 +250,7 @@ impl IR {
     fn parse_code_block(
         &mut self,
         ir_fun: &mut IRFunction,
+        ast_fn: &ast::Function,
         ast_code_block: &ast::CodeBlock,
     ) -> IRCodeBlockId {
         let mut block = ir_fun.prepare_block();
@@ -210,7 +266,7 @@ impl IR {
                     /*Return an expression(or () if no expression is provided)*/
                     let ret = match value.as_ref() {
                         Some(expr) => {
-                            let expr_reg = self.parse_expr(ir_fun, expr);
+                            let expr_reg = self.parse_expr(expr, ir_fun, &mut block, ast_fn);
                             IROp::Return { value: expr_reg }
                         }
                         None => IROp::Return { value: IRReg::UNIT },
@@ -228,7 +284,7 @@ impl IR {
                     // It may have on AST level which inserts drops for affine types, but
                     // on IR level we just translate it into series of branches
 
-                    let blk = self.parse_code_block(ir_fun, nested_block);
+                    let blk = self.parse_code_block(ir_fun, ast_fn, nested_block);
                     let dest_reg = ir_fun.new_reg(ir_fun.get_block_type(blk), None);
                     block.ops.push(IROp::LocalCall {
                         block_id: blk,
@@ -240,8 +296,9 @@ impl IR {
                     last_reg = Some(IRReg::UNIT)
                     // Unit() on top-expr(stmt) level is essentially nop.
                 }
-                ast::ExprKind::Argument(name) => {
-                    unimplemented!()
+                ast::ExprKind::Argument(_) => {
+                    let reg = self.parse_expr(x, ir_fun, &mut block, ast_fn);
+                    last_reg = Some(reg);
                 }
             }
         }
@@ -256,6 +313,8 @@ impl IR {
         ir_fun.insert_block(block)
     }
 
+    /// Parse AST type.
+    /// Identical types will be merged
     fn parse_type(&mut self, ast_type: &ast::Type) -> IRTypeId {
         match ast_type {
             ast::Type::Unit => IRTypeId::UNIT,
@@ -267,19 +326,18 @@ impl IR {
     fn parse_ast_func(&mut self, ast_func: &ast::Function) -> Result<IRFunction, String> {
         let mut fun = IRFunction::new(&ast_func.name, ast_func.decl_pos);
 
-        match ast_func.body.as_ref() {
-            Some(body) => {
-                self.parse_code_block(&mut fun, body);
-            }
-            None => unimplemented!("IR doesn't support extern functions"),
-        }
-
         for arg in ast_func.r#type.args.iter() {
             let type_id = self.parse_type(&arg.r#type);
             // TODO: give register an argument flag, not just put in args
-            // TODO: give register (unique) name from AST
             let arg_reg = fun.new_reg(type_id, Some(arg.name.clone()));
             fun.args.push(arg_reg);
+        }
+
+        match ast_func.body.as_ref() {
+            Some(body) => {
+                self.parse_code_block(&mut fun, ast_func, body);
+            }
+            None => unimplemented!("IR doesn't support extern functions"),
         }
 
         let check = self.functions.get(&ast_func.name);

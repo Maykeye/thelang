@@ -47,7 +47,7 @@ $r1 = call .b1
 ret $r1
 
 .b1:
-ret $r0
+ret $r0:<()>
 
 END FUNC main\n";
     assert_eq!(ir.to_text(), expected);
@@ -56,33 +56,57 @@ END FUNC main\n";
 #[test]
 fn test_return_arg() {
     fn r#impl(source: &str, return_expr: usize, reg_name: &str) {
+        assert!(return_expr > 0);
         let ir = IR::from_thelan(source).expect(&format!("unable to get ast from {source}"));
         let func = ir.functions.get("func").unwrap();
         let block = func.blocks.get(0).unwrap();
         match block.ops[return_expr] {
-            IROp::Return { value } => {
-                let data = func.get_reg_data(value);
+            IROp::Return { value: ret_arg } => {
+                let reg_ret_data = func.get_reg_data(ret_arg);
+                assert!(
+                    reg_ret_data.name.is_none(),
+                    "Expected to load argument into nameless argument {:?} to return it\n{source}\n{:?}",
+                    reg_ret_data.name,
+                    block.ops
+                );
+                let (arg, dest) = match block.ops[return_expr - 1] {
+                    IROp::LoadArg { arg, dest } => (arg, dest),
+                    _ => panic!(
+                        "Expected to load argument to return it\n{source}\n{:?}",
+                        block.ops
+                    ),
+                };
                 assert_eq!(
-                    data.name,
+                    ret_arg, dest,
+                    "Expected to load argument to return it\n{source}\n{:?}",
+                    block.ops
+                );
+                let reg_arg_data = func.get_reg_data(arg);
+
+                assert_eq!(
+                    reg_arg_data.name,
                     Some(reg_name.to_string()),
-                    "Register with a name {reg_name} expected, got {data:?}"
+                    "Register with a name {reg_name} expected, got {reg_arg_data:?}"
                 )
             }
-            _ => panic!("return expected, not {source}"),
+            _ => panic!(
+                "return expected, not {:?}\n {source}\n{:?}",
+                block.ops[return_expr], block.ops
+            ),
         }
     }
 
-    r#impl("fn func(a1: (), a2:()){return a1}", 0, "a1");
-    r#impl("fn func(a1: (), a2:()){return a2}", 0, "a2");
-    r#impl("fn func(a1: (), a2:()){return a1;}", 0, "a1");
-    r#impl("fn func(a1: (), a2:()){return a2;}", 0, "a2");
-    r#impl("fn func(a1: (), a2:()){a1}", 0, "a1");
-    r#impl("fn func(a1: (), a2:()){a2}", 0, "a2");
-    r#impl("fn func(a1: (), a2:()){a1;a2}", 1, "a2");
-    r#impl("fn func(a1: (), a2:()){a2;a1}", 1, "a1");
-    r#impl("fn func(a1: (), a2:()){return a1;a2}", 1, "a2");
+    r#impl("fn func(a1: (), a2:()){return a1}", 1, "a1");
+    r#impl("fn func(a1: (), a2:()){return a2}", 1, "a2");
+    r#impl("fn func(a1: (), a2:()){return a1;}", 1, "a1");
+    r#impl("fn func(a1: (), a2:()){return a2;}", 1, "a2");
+    r#impl("fn func(a1: (), a2:()){a1}", 1, "a1");
+    r#impl("fn func(a1: (), a2:()){a2}", 1, "a2");
+    r#impl("fn func(a1: (), a2:()){a1;a2}", 2, "a2");
+    r#impl("fn func(a1: (), a2:()){a2;a1}", 2, "a1");
+    r#impl("fn func(a1: (), a2:()){return a1;a2}", 1, "a1");
     r#impl("fn func(a1: (), a2:()){return a2;a1;}", 1, "a2");
-    r#impl("fn func(a1: (), a2:(), a3:()){a2;a1;a3}", 1, "a3");
+    r#impl("fn func(a1: (), a2:(), a3:()){a2;a1;a3}", 3, "a3");
 }
 
 #[test]

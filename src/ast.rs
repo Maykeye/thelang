@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 use crate::{
     cst::{self, CST, Node},
@@ -102,6 +102,11 @@ impl Function {
     fn get_args(&self) -> &[TpFunctionArg] {
         &self.r#type.args
     }
+
+    pub fn get_argument_index_by_name(&self, name: &str) -> Option<usize> {
+        // TODO: refactor codegen to use index instead of name
+        self.r#type.args.iter().position(|arg| arg.name == name)
+    }
 }
 
 #[derive(Debug)]
@@ -187,7 +192,7 @@ impl AST {
         }
     }
 
-    fn parse_type<'a>(&mut self, cst: &'a Node, errors: &mut Vec<String>) -> Result<Type, ()> {
+    fn parse_type<'a>(&mut self, cst: &'a Node, _errors: &mut Vec<String>) -> Result<Type, ()> {
         match cst.kind {
             cst::NodeKind::Unit => Ok(Type::Unit),
             _ => {

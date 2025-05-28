@@ -3,7 +3,7 @@ use std::{fmt::Display, vec};
 use crate::{
     IR,
     codegen::CodeGen,
-    ir::{IRCodeBlockId, IRFunction, IROp, IRReg, IRTypeId},
+    ir::{IRCodeBlockId, IRFunction, IROp, IRTypeId},
 };
 
 /// Target OS for nasm64, for now only one is supported
@@ -188,7 +188,7 @@ impl CodeGenNasm64 {
         }
     }
 
-    fn write_code_block(&mut self, ir: &IR, ir_func: &IRFunction, code_block_id: IRCodeBlockId) {
+    fn write_code_block(&mut self, _ir: &IR, ir_func: &IRFunction, code_block_id: IRCodeBlockId) {
         let code_block = ir_func.blocks.get(code_block_id.0).expect(&format!(
             "internal error: invalid code block id {}:{}",
             ir_func.name, code_block_id.0
@@ -211,6 +211,10 @@ impl CodeGenNasm64 {
                     dest: _dest,
                 } => {
                     self.code.call(Operand::CodeBlock(*other_code_block_id));
+                }
+
+                IROp::LoadArg { arg: _, dest: _ } => {
+                    unimplemented!();
                 }
             }
         }
