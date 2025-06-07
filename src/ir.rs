@@ -220,7 +220,7 @@ impl IR {
             ast::ExprKind::Unit => IRReg::UNIT,
             ast::ExprKind::Argument(name) => {
                 let ast_arg_idx = ast_func
-                    .get_argument_index_by_name(&name)
+                    .get_argument_index_by_name(name)
                     .unwrap_or_else(|| {
                         panic!("Internal error: AST was passed with inconsistent arguments: {name}")
                     });
@@ -241,7 +241,7 @@ impl IR {
                     dest: op_reg,
                 });
 
-                return op_reg;
+                op_reg
             }
             _ => unimplemented!("expression parser nyi for {:?}", &ast_expr.kind),
         }

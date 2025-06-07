@@ -1,7 +1,7 @@
 /// Skip whitespace(//comment line included into whitespace)
 use crate::CharPos;
 use crate::{Token, TokenKind};
-fn skip_ws<'a>(cur: &mut CharPos<'a>) {
+fn skip_ws(cur: &mut CharPos) {
     loop {
         // Skip white-spaces
         while cur.peekz().is_whitespace() {
@@ -35,7 +35,7 @@ fn is_id_body(c: char) -> bool {
 }
 
 /// Read identifier
-fn read_keyword_or_identifier<'a>(cur: &mut CharPos<'a>) -> String {
+fn read_keyword_or_identifier(cur: &mut CharPos) -> String {
     let mut s = if cur.consume2('r', '#') {
         String::from("r#")
     } else {
@@ -91,7 +91,7 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
         return Err(format!("Unknown token around {:?}", cur.pos));
     }
 
-    return Ok(tokens);
+    Ok(tokens)
 }
 
 #[cfg(test)]

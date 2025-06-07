@@ -78,11 +78,11 @@ pub struct CodeBlock {
 
 impl CodeBlock {
     fn new(pos: Pos) -> Self {
-        return Self {
+        Self {
             exprs: Default::default(),
             pos,
             return_type: None,
-        };
+        }
     }
 
     fn last_expr_pos(&self) -> Pos {
@@ -110,6 +110,7 @@ impl Function {
 }
 
 #[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct AST {
     pub functions: HashMap<String, Function>,
 }
@@ -192,7 +193,8 @@ impl AST {
         }
     }
 
-    fn parse_type<'a>(&mut self, cst: &'a Node, _errors: &mut Vec<String>) -> Result<Type, ()> {
+    #[allow(clippy::ptr_arg)] // _errors will be modified one day. Probs
+    fn parse_type(&mut self, cst: &Node, _errors: &mut Vec<String>) -> Result<Type, ()> {
         match cst.kind {
             cst::NodeKind::Unit => Ok(Type::Unit),
             _ => {
@@ -215,7 +217,7 @@ impl AST {
             };
 
             // Check argument name overshadowing
-            let same_name_exist = args_tp.iter().find(|arg| arg.name == name).is_some();
+            let same_name_exist = args_tp.iter().any(|arg| arg.name == name);
             if same_name_exist {
                 let msg = cst_arg
                     .pos
@@ -253,7 +255,7 @@ impl AST {
                 continue;
             }
 
-            let args_tp = self.parse_cst_function_declarations_args(&cst_func, errors);
+            let args_tp = self.parse_cst_function_declarations_args(cst_func, errors);
             // Parse return type
             let func_ret_type = match &cst_func.return_type {
                 Some(node) => self.parse_type(node, errors).unwrap_or(Type::Unit),
@@ -285,10 +287,11 @@ impl AST {
         errors: &mut Vec<String>,
     ) -> bool {
         if *from == *to {
-            return true;
+            true
+        } else {
+            errors.push(pos.report(format!("can't convert type {:?} to {:?}", from, to)));
+            false
         }
-        errors.push(pos.report(format!("can't convert type {:?} to {:?}", from, to)));
-        return false;
     }
 
     fn parse_expr(
@@ -399,11 +402,7 @@ impl AST {
                 }
 
                 cst::NodeKind::CodeBlock(cst_nested_cb) => {
-                    let new_cb = match Self::parse_code_block(cst_nested_cb, vars, errors) {
-                        Some(cb) => cb,
-                        None => return None,
-                    };
-
+                    let new_cb = Self::parse_code_block(cst_nested_cb, vars, errors)?;
                     let last_pos = new_cb.last_expr_pos();
                     let block_type = new_cb.exprs.last().map_or(Type::Unit, |t| {
                         t.r#type.as_ref().expect("Internal error").clone()
@@ -411,7 +410,7 @@ impl AST {
 
                     let abort = match (&code_block.return_type, &new_cb.return_type) {
                         (Some(old_type), Some(new_type)) => !Self::check_type_implicit_conversion(
-                            last_pos, &new_type, &old_type, errors,
+                            last_pos, new_type, old_type, errors,
                         ),
                         (None, Some(new_type)) => {
                             code_block.return_type = Some(new_type.clone());
@@ -440,19 +439,18 @@ impl AST {
             }
         }
 
-        return Some(code_block);
+        Some(code_block)
     }
 
-    fn parse_cst_function_definition<'a>(
+    fn parse_cst_function_definition(
         &mut self,
         errors: &mut Vec<String>,
-        mappings: &HashMap<String, &'a cst::Fn>,
+        mappings: &HashMap<String, &cst::Fn>,
     ) {
         for func in self.functions.values_mut() {
-            let cst_func = *mappings.get(&func.name).expect(&format!(
-                "Internal error: can't find the CST body of {}",
-                &func.name
-            ));
+            let cst_func = *mappings.get(&func.name).unwrap_or_else(|| {
+                panic!("Internal error: can't find the CST body of {}", &func.name)
+            });
 
             let cst_body = match &cst_func.body {
                 Some(body) => body,
@@ -472,7 +470,7 @@ impl AST {
                 vars.data.insert(
                     name.clone(),
                     Variable {
-                        name: name,
+                        name,
                         r#type: Some(arg.r#type.clone()),
                         is_arg: true,
                     },
@@ -490,7 +488,7 @@ impl AST {
             // If function body has no explicit return, then take the last-known-expression type.
             // At this point expression types must be all resolved
             // Default type is unit, of course
-            if code_block.return_type == None {
+            if code_block.return_type.is_none() {
                 let tp = match code_block.exprs.last() {
                     Some(e) => {
                         let t = match e.r#type.as_ref() {
@@ -514,7 +512,7 @@ impl AST {
                     // TODO: last expr type
                     let msg = code_block
                         .last_expr_pos()
-                        .report(format!("internal error: no type for function body found"));
+                        .report("internal error: no type for function body found");
                     errors.push(msg);
                     continue;
                 }

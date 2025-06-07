@@ -116,6 +116,7 @@ impl Node {
 }
 
 #[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct CST {
     pub functions: HashMap<String, Fn>,
 }
@@ -206,15 +207,15 @@ impl CST {
         &self,
         map: &HashMap<String, V>,
         name: &str,
-    ) -> Option<String> {
+    ) -> Result<(), String> {
         if let Some(other) = map.get(name) {
-            return Some(format!(
+            Err(format!(
                 "Duplicate of the name {}, previously the name was used at {:?}",
                 name,
                 other.get_pos()
-            ));
+            ))
         } else {
-            None
+            Ok(())
         }
     }
 
@@ -243,7 +244,7 @@ impl CST {
             }
         }
         *index = i;
-        return Err(msg);
+        Err(msg)
     }
 
     /// Parse terminal expression, if curent token looks like it begins it.
@@ -418,19 +419,17 @@ impl CST {
             return (i + 2, Ok(Node::new(NodeKind::Unit, toks[i].pos)));
         }
 
-        if let Some(ident) = toks.get_identifier(i) {
-            return (
-                i + 1,
-                Ok(Node::new(NodeKind::Identifier(ident), toks[i].pos)),
-            );
-        }
-        return (
+        (
             i + 1,
-            Err(toks.get_nth_pos(i).report(format!(
-                "Type not implemented beyond simlpest; found token: {}",
-                toks.get_nth_kind_description(i)
-            ))),
-        );
+            if let Some(ident) = toks.get_identifier(i) {
+                Ok(Node::new(NodeKind::Identifier(ident), toks[i].pos))
+            } else {
+                Err(toks.get_nth_pos(i).report(format!(
+                    "Type not implemented beyond simlpest; found token: {}",
+                    toks.get_nth_kind_description(i)
+                )))
+            },
+        )
     }
 
     /// Parses function:arguments)
@@ -582,7 +581,7 @@ impl CST {
                     };
                     assert!(i > i0, "internal error: parser stuck at fn parsing");
 
-                    if let Some(msg) = cst.chkerr_check_name_duplicate(&cst.functions, &func.name) {
+                    if let Err(msg) = cst.chkerr_check_name_duplicate(&cst.functions, &func.name) {
                         errors.push(toks[i0].pos.report(msg));
                         continue;
                     }

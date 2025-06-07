@@ -28,6 +28,7 @@ impl Default for CodeGenNasm64Config {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 enum Operand {
     RAX,
     RDI,
@@ -189,10 +190,12 @@ impl CodeGenNasm64 {
     }
 
     fn write_code_block(&mut self, _ir: &IR, ir_func: &IRFunction, code_block_id: IRCodeBlockId) {
-        let code_block = ir_func.blocks.get(code_block_id.0).expect(&format!(
-            "internal error: invalid code block id {}:{}",
-            ir_func.name, code_block_id.0
-        ));
+        let code_block = ir_func.blocks.get(code_block_id.0).unwrap_or_else(|| {
+            panic!(
+                "internal error: invalid code block id {}:{}",
+                ir_func.name, code_block_id.0
+            )
+        });
         self.code.cb_label(code_block_id);
         for op in &code_block.ops {
             match op {

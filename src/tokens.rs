@@ -51,7 +51,8 @@ impl<'a> Tokens<'a> {
     }
 
     pub fn kind_eq(&self, i: usize, kind: TokenKind) -> bool {
-        self.tokens.get(i).map_or(false, |t| t.kind == kind)
+        //self.tokens.get(i).map_or(false, |t| t.kind == kind)
+        self.tokens.get(i).is_some_and(|t| t.kind == kind)
     }
 
     pub fn get_identifier(&self, i: usize) -> Option<String> {
@@ -80,11 +81,11 @@ impl<'a> Tokens<'a> {
     }
 
     pub fn inner(&self) -> &'a [Token] {
-        &self.tokens
+        self.tokens
     }
 }
 
-impl<'a> Index<usize> for Tokens<'a> {
+impl Index<usize> for Tokens<'_> {
     type Output = Token;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -134,11 +135,11 @@ impl<'a> CharPos<'a> {
     }
 
     pub fn peek(&mut self) -> Option<char> {
-        return self.it.peek().copied();
+        self.it.peek().copied()
     }
 
     pub fn peekz(&mut self) -> char {
-        return self.peek().unwrap_or('\0');
+        self.peek().unwrap_or('\0')
     }
 
     /// Advances one character forward, updating the position
