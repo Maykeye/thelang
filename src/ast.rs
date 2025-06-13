@@ -548,3 +548,6 @@ impl AST {
 #[cfg(test)]
 #[path = "_tests/test_ast.rs"]
 mod test_ast;
+#[cfg(test)]
+#[path = "_tests/test_ast_expr.rs"]
+mod test_ast_expr;
