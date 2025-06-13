@@ -107,6 +107,15 @@ fn test_expr_unary_return_w_expr() {
         _ => panic!("return expected"),
     });
 }
+#[test]
+fn test_expr_unary_return_wo_expr() {
+    test_expr("return", 0, |node| match node {
+        NodeKind::Return(rv) => {
+            assert!(matches!(&rv.kind, NodeKind::Unit))
+        }
+        _ => panic!("return expected"),
+    });
+}
 
 #[test]
 fn test_boolean_cst_level() {
