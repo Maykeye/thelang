@@ -11,6 +11,7 @@ mod codegen;
 mod codegen_nasm64;
 mod cst;
 mod lexer;
+mod test_tools;
 use crate::codegen::CodeGen;
 
 fn main() {

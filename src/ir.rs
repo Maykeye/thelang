@@ -14,6 +14,18 @@ pub struct IRTypeId(pub usize);
 impl IRTypeId {
     pub const NEVER: IRTypeId = IRTypeId(0);
     pub const UNIT: IRTypeId = IRTypeId(1);
+    pub const BOOL: IRTypeId = IRTypeId(2);
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct IRType {
+    pub name: String,
+}
+
+impl IRType {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
 }
 
 impl IRReg {
@@ -56,14 +68,13 @@ pub enum IROp {
         dest: IRReg,
     },
     /// Return a register from the function
-    Return {
-        value: IRReg,
-    },
+    Return { value: IRReg },
 
-    LoadArg {
-        arg: IRReg,
-        dest: IRReg,
-    },
+    /// Invert boolean value
+    Invert { value: IRReg, dest: IRReg },
+
+    /// Load argument
+    LoadArg { arg: IRReg, dest: IRReg },
 }
 
 #[derive(Debug)]
@@ -90,16 +101,19 @@ pub struct IRFunction {
     pub blocks: Vec<IRCodeBlock>,
     pub args: Vec<IRReg>,
     pub regs: Vec<IRRegData>,
+    pub types: Vec<IRType>,
 }
 
 impl IRFunction {
     pub fn new<S: Into<String>>(name: S, pos: Pos) -> Self {
+        let types = vec![IRType::new("!"), IRType::new("()"), IRType::new("bool")];
         Self {
             name: name.into(),
             blocks: vec![],
             pos,
             regs: vec![IRRegData::new_unit()],
             args: vec![],
+            types,
         }
     }
 
@@ -187,6 +201,11 @@ impl IR {
                             func.format_reg_name(*dest),
                             func.format_reg_name(*arg),
                         ),
+                        IROp::Invert { value, dest } => format!(
+                            "{} = invert.bool {}",
+                            func.format_reg_name(*dest),
+                            func.format_reg_name(*value)
+                        ),
                     };
                     s.push_str(&ins);
                     s.push('\n');
@@ -243,6 +262,15 @@ impl IR {
 
                 op_reg
             }
+            ast::ExprKind::Invert(base) => {
+                let base_reg = self.parse_expr(base, ir_fun, ir_block, ast_func);
+                let op_reg = ir_fun.new_reg(IRTypeId::BOOL, None);
+                ir_block.ops.push(IROp::Invert {
+                    value: base_reg,
+                    dest: op_reg,
+                });
+                op_reg
+            }
             _ => unimplemented!("expression parser nyi for {:?}", &ast_expr.kind),
         }
     }
@@ -276,7 +304,7 @@ impl IR {
                     has_branch = true;
                 }
                 ast::ExprKind::CodeBlock(nested_block) => {
-                    // Nessted block, a case of
+                    // Nested block, a case of
                     // fn main() {
                     //    {
                     //    }
@@ -296,7 +324,7 @@ impl IR {
                     last_reg = Some(IRReg::UNIT)
                     // Unit() on top-expr(stmt) level is essentially nop.
                 }
-                ast::ExprKind::Argument(_) => {
+                ast::ExprKind::Invert(_) | ast::ExprKind::Argument(_) => {
                     let reg = self.parse_expr(x, ir_fun, &mut block, ast_fn);
                     last_reg = Some(reg);
                 }

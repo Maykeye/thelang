@@ -48,6 +48,7 @@ impl Variable {
 pub enum ExprKind {
     Unit,
     Return(Option<Box<Expr>>),
+    Invert(Box<Expr>),
     CodeBlock(CodeBlock),
     Argument(String),
 }
@@ -545,6 +546,7 @@ impl AST {
     }
 }
 
+// Test stuff
 #[cfg(test)]
 #[path = "_tests/test_ast.rs"]
 mod test_ast;

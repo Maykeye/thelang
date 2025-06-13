@@ -638,30 +638,6 @@ impl CST {
 }
 
 // Test stuff
-macro_rules! unwrap_cst_kind {
-    ($expr:expr, $variant:path) => {
-        match $expr {
-            $variant(val) => val,
-            _ => unwrap_cst_kind!(@ UNEXPECTED_KIND $expr, $variant)
-        }
-    };
-
-    ($expr:expr, $variant:path, ()) => {
-        match $expr {
-            $variant => (),
-            _ => unwrap_cst_kind!(@ UNEXPECTED_KIND $expr, $variant)
-        }
-    };
-
-    (@ UNEXPECTED_KIND $expr:expr, $variant:path) => {
-        panic!(
-            "Expected variant {} but got NodeKind::{:?}",
-            stringify!($variant),
-            $expr
-        )
-    }
-}
-
 #[cfg(test)]
 #[path = "_tests/test_cst.rs"]
 mod test_cst;

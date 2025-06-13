@@ -1,7 +1,9 @@
 // This file parses overall grammar without going too deep into nested tokens
 use crate::cst::NodeKind;
 use crate::tokens::Pos;
+use crate::unwrap_variant;
 use crate::{CST, tokenize};
+
 fn cst_fun_from_text(text: &str, func_name: &str) -> crate::cst::Fn {
     let t = tokenize(text).expect(&format!("Lexer failed for {text}"));
     let mut cst = CST::from_tokens(&t).expect(&format!("CST failed for <<<\n{text}\n>>>"));
@@ -54,7 +56,7 @@ fn test_expr<F: Fn(&NodeKind)>(expr_text: &str, delta_col: usize, f: F) {
                 body.nodes
             );
 
-            let x = unwrap_cst_kind!(&tail.kind, NodeKind::Identifier);
+            let x = unwrap_variant!(&tail.kind, NodeKind::Identifier);
             assert_eq!(x, "TAIL");
         }
     };
@@ -67,20 +69,20 @@ fn test_expr<F: Fn(&NodeKind)>(expr_text: &str, delta_col: usize, f: F) {
 #[test]
 fn test_expr_term_unit() {
     test_expr("()", 0, |node| {
-        unwrap_cst_kind!(&node, NodeKind::Unit, ());
+        unwrap_variant!(&node, NodeKind::Unit, ());
     });
 }
 #[test]
 fn test_expr_term_codeblock() {
     test_expr("{(a)}", 0, |node| {
-        unwrap_cst_kind!(&node, NodeKind::CodeBlock);
+        unwrap_variant!(&node, NodeKind::CodeBlock);
     });
 }
 
 #[test]
 fn test_expr_term_identifier() {
     test_expr("var_name", 0, |node| {
-        let x = unwrap_cst_kind!(&node, NodeKind::Identifier);
+        let x = unwrap_variant!(&node, NodeKind::Identifier);
         assert_eq!(x, "var_name");
     });
 }
@@ -88,7 +90,7 @@ fn test_expr_term_identifier() {
 #[test]
 fn test_expr_term_parens() {
     test_expr("(abc)", 1, |node| {
-        let x = unwrap_cst_kind!(&node, NodeKind::Identifier);
+        let x = unwrap_variant!(&node, NodeKind::Identifier);
         assert_eq!(x, "abc");
     });
 }
@@ -97,16 +99,16 @@ fn test_expr_term_parens() {
 #[test]
 fn test_expr_unary_return_w_expr() {
     test_expr("return ret_val", 0, |node| {
-        let rv = unwrap_cst_kind!(node, NodeKind::Return);
-        let name = unwrap_cst_kind!(&rv.kind, NodeKind::Identifier);
+        let rv = unwrap_variant!(node, NodeKind::Return);
+        let name = unwrap_variant!(&rv.kind, NodeKind::Identifier);
         assert_eq!(name, "ret_val");
     });
 }
 #[test]
 fn test_expr_unary_return_wo_expr() {
     test_expr("return", 0, |node| {
-        let rv = unwrap_cst_kind!(node, NodeKind::Return);
-        unwrap_cst_kind!(&rv.kind, NodeKind::Unit, ());
+        let rv = unwrap_variant!(node, NodeKind::Return);
+        unwrap_variant!(&rv.kind, NodeKind::Unit, ());
     });
 }
 
@@ -116,7 +118,7 @@ fn test_boolean_cst_level() {
     let body = fun.body.expect("function defined");
     let inv = body.nodes.get(0).expect("body defined");
     assert_eq!(inv.pos, Pos::new(2, 1));
-    let inner = unwrap_cst_kind!(&inv.kind, NodeKind::Invert);
-    let ident = unwrap_cst_kind!(&inner.kind, NodeKind::Identifier);
+    let inner = unwrap_variant!(&inv.kind, NodeKind::Invert);
+    let ident = unwrap_variant!(&inner.kind, NodeKind::Identifier);
     assert_eq!(ident, "x");
 }

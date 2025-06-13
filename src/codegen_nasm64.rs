@@ -219,6 +219,10 @@ impl CodeGenNasm64 {
                 IROp::LoadArg { arg: _, dest: _ } => {
                     unimplemented!();
                 }
+
+                IROp::Invert { value, dest } => {
+                    unimplemented!();
+                }
             }
         }
     }
