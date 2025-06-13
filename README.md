@@ -38,6 +38,7 @@ It can create nasm64 linux assembler code for absolutely empty functions
 * EXPR ::= EXPR_UNARY 
 
 * EXPR_UNARY ::= `return` [EXPR] (*type: !*) 
+             | `!` EXPR_TERM
              | EXPR_TERM
  
  * EXPR_TERM ::= `()` (*type unit*) 

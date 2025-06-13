@@ -74,6 +74,7 @@ pub enum NodeKind {
     Fn(Fn),
     CodeBlock(CodeBlock),
     Return(Box<Node>),
+    Invert(Box<Node>),
     Identifier(String),
     Unit,
 }
@@ -99,6 +100,13 @@ impl Node {
     pub fn new_unit(pos: Pos) -> Node {
         Self {
             kind: NodeKind::Unit,
+            pos,
+        }
+    }
+
+    pub fn new_invert(inner: Node, pos: Pos) -> Node {
+        Self {
+            kind: NodeKind::Invert(Box::new(inner)),
             pos,
         }
     }
@@ -300,20 +308,42 @@ impl CST {
         None
     }
 
+    // TODO - make normal enum for errors
+    fn errmsg_expression_required(toks: &Tokens, i: usize) -> OptExprParsingResult {
+        let msg = toks.get_nth_pos(i).report(format!(
+            "expression required, found instead `{}`",
+            toks.get_nth_kind_description(i)
+        ));
+        Some((i, Err(msg)))
+    }
+
     /// Parse an unary expression
     /// EXPR_UNARY ::= `return` [EXPR]  
+    /// | `!` EXPR_TERM
     /// | EXPR_TERM
     fn parse_expr_unary(toks: &Tokens, i: usize) -> OptExprParsingResult {
+        let pos = toks.get_nth_pos(i);
         if toks.kind_eq(i, TokenKind::Return) {
-            let pos = toks[i].pos;
             let return_value = Self::parse_expr_opt(toks, i + 1);
-            let (i, return_value) = match return_value {
+            let (i, return_stmt) = match return_value {
                 Some((i, Ok(node))) => (i, Node::new_return(Some(node), pos)),
                 Some((i, Err(msg))) => return Some((i, Err(msg))),
                 None => (i + 1, Node::new_return(None, pos)),
             };
 
-            return Some((i, Ok(return_value)));
+            return Some((i, Ok(return_stmt)));
+        }
+
+        if toks.kind_eq(i, TokenKind::Exclamation) {
+            let (i, base) = if let Some(i_base) = Self::parse_expr_term(toks, i + 1) {
+                i_base
+            } else {
+                return Self::errmsg_expression_required(toks, i + 1);
+            };
+
+            let inverted = base.map(|node| Node::new_invert(node, pos));
+
+            return Some((i, inverted));
         }
 
         Self::parse_expr_term(toks, i)
@@ -331,11 +361,7 @@ impl CST {
         match parsed {
             Some(parsed) => parsed,
             None => {
-                let msg = toks.get_nth_pos(i).report(format!(
-                    "expression required, found instead `{}`",
-                    toks.get_nth_kind_description(i)
-                ));
-                (i, Err(msg))
+                return Self::errmsg_expression_required(toks, i).unwrap();
             }
         }
     }
@@ -608,6 +634,31 @@ impl CST {
         } else {
             Err((cst, errors))
         }
+    }
+}
+
+// Test stuff
+macro_rules! unwrap_cst_kind {
+    ($expr:expr, $variant:path) => {
+        match $expr {
+            $variant(val) => val,
+            _ => unwrap_cst_kind!(@ UNEXPECTED_KIND $expr, $variant)
+        }
+    };
+
+    ($expr:expr, $variant:path, ()) => {
+        match $expr {
+            $variant => (),
+            _ => unwrap_cst_kind!(@ UNEXPECTED_KIND $expr, $variant)
+        }
+    };
+
+    (@ UNEXPECTED_KIND $expr:expr, $variant:path) => {
+        panic!(
+            "Expected variant {} but got NodeKind::{:?}",
+            stringify!($variant),
+            $expr
+        )
     }
 }
 

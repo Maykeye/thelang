@@ -21,6 +21,7 @@
 
 
 ## Delayed goals
+* Cleanup CST parsing.
 * CST Expr tests: make tests for each grammar rule, where possible, where grammar is incorrect.  Each grammar rule, if broken, should recover, not loop eternally
 * Add lean4 backend
 * scopetrackerhandler with Drop to push/pop scope

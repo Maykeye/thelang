@@ -107,3 +107,14 @@ fn test_expr_unary_return_w_expr() {
         _ => panic!("return expected"),
     });
 }
+
+#[test]
+fn test_boolean_cst_level() {
+    let fun = cst_fun_from_text("fn invert(x: bool){\n!x}", "invert");
+    let body = fun.body.expect("function defined");
+    let inv = body.nodes.get(0).expect("body defined");
+    assert_eq!(inv.pos, Pos::new(2, 1));
+    let inner = unwrap_cst_kind!(&inv.kind, NodeKind::Invert);
+    let ident = unwrap_cst_kind!(&inner.kind, NodeKind::Identifier);
+    assert_eq!(ident, "x");
+}

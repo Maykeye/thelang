@@ -1,6 +1,7 @@
 use crate::cst::NodeKind;
-use crate::tokens::Tokens;
+use crate::tokens::{Pos, Tokens};
 use crate::{CST, tokenize};
+use pretty_assertions::assert_eq;
 
 fn cst_fun_from_text(text: &str, func_name: &str) -> crate::cst::Fn {
     let t = tokenize(text).expect(&format!("Lexer failed for {text}"));
@@ -21,7 +22,10 @@ fn assert_only_err(text: &str, err_msg: &str) {
         "only one error expected, got: {err:?}\n{text}"
     );
     assert!(cst.functions.is_empty());
-    assert_eq!(err[0], err_msg);
+    assert_eq!(
+        err[0], err_msg,
+        "Source:\n{text}\n(Left = got; right = expected)"
+    );
 }
 
 #[test]
@@ -53,13 +57,8 @@ fn test_ret() {
         let func = cst_fun_from_text(text, "hello");
         let body = func.body.as_ref().unwrap();
         let node0 = &body.nodes[0].kind;
-
-        match node0 {
-            NodeKind::Return(node) => {
-                assert!(matches!(node.kind, NodeKind::Unit));
-            }
-            _ => panic!("return expected"),
-        };
+        let returned_node = unwrap_cst_kind!(node0, NodeKind::Return);
+        unwrap_cst_kind!(returned_node.kind, NodeKind::Unit, ());
     }
     r#impl("fn hello(){return;}");
     r#impl("fn hello(){return}");
@@ -97,24 +96,13 @@ fn test_nested_blocks() {
     let body = cst_fun_from_text("fn fun(){{};{{}}}", "fun");
     let body = body.body.as_ref().unwrap().as_ref();
     assert_eq!(body.nodes.len(), 2);
-    match &body.nodes[0].kind {
-        NodeKind::CodeBlock(nested) => {
-            assert_eq!(nested.nodes.len(), 0);
-        }
-        _ => panic!(">> unexpected node kind {:?}", &body.nodes[0]),
-    }
-    match &body.nodes[1].kind {
-        NodeKind::CodeBlock(nested) => {
-            assert_eq!(nested.nodes.len(), 1);
-            match &nested.nodes[0].kind {
-                NodeKind::CodeBlock(nested) => {
-                    assert_eq!(nested.nodes.len(), 0);
-                }
-                _ => panic!(">> unexpected node kind {:?}", &body.nodes[0]),
-            };
-        }
-        _ => panic!(">> unexpected node kind {:?}", &body.nodes[0]),
-    }
+    let lhs_cb = unwrap_cst_kind!(&body.nodes[0].kind, NodeKind::CodeBlock);
+    assert!(lhs_cb.nodes.is_empty());
+
+    let rhs_cb = unwrap_cst_kind!(&body.nodes[1].kind, NodeKind::CodeBlock);
+    assert_eq!(rhs_cb.nodes.len(), 1);
+    let rhs_inner_cb = unwrap_cst_kind!(&rhs_cb.nodes[0].kind, NodeKind::CodeBlock);
+    assert!(rhs_inner_cb.nodes.is_empty());
 }
 
 #[test]
@@ -167,9 +155,4 @@ fn test_arg_names() {
     r#impl("fn fun(a:_){}", &[("a", "_")]);
     r#impl("fn fun(a1:_, a2:_){}", &[("a1", "_"), ("a2", "_")]);
     r#impl("fn fun(_:(), foo: bar,){}", &[("_", "()"), ("foo", "bar")]);
-}
-
-#[test]
-fn test_boolean_cst_level() {
-    let fun = cst_fun_from_text("fn invert(x: bool){!x}", "invert");
 }
