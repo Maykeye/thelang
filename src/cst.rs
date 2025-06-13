@@ -570,6 +570,18 @@ impl CST {
         }
         i += 1;
 
+        // Optional return type
+        if toks.kind_eq(i, TokenKind::ThinArrow) {
+            let res;
+            (i, res) = Self::parse_type(toks, i + 1);
+            let tp = if let Ok(tp) = res {
+                tp
+            } else {
+                return (i, Err(res.unwrap_err()));
+            };
+            func.return_type = Some(Box::new(tp));
+        }
+
         // TODO: externs
         let parsed_code_block = Self::parse_code_block(toks, i);
         i = parsed_code_block.0;

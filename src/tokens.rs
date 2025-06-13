@@ -13,6 +13,10 @@ pub enum TokenKind {
     LCurly,
     /// Code block ends
     RCurly,
+    /// Minus
+    Minus,
+    /// Thin arrows (->) are used for return type
+    ThinArrow,
     /// Invert of boolean
     Exclamation,
     /// Token separator

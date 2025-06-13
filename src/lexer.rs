@@ -89,6 +89,23 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
             continue;
         }
 
+        let gram12 = match cur.peekz() {
+            '-' => {
+                cur.advance();
+                if cur.peekz() == '>' {
+                    cur.advance();
+                    Some(TokenKind::ThinArrow)
+                } else {
+                    Some(TokenKind::Minus)
+                }
+            }
+            _ => None,
+        };
+        if let Some(kind) = gram12 {
+            tokens.push(Token::new(kind, pos0));
+            continue;
+        }
+
         return Err(format!("Unknown token around {:?}", cur.pos));
     }
 
