@@ -53,6 +53,7 @@ pub enum ExprKind {
     Invert(Box<Expr>),
     CodeBlock(CodeBlock),
     Argument(String),
+    BooleanLiteral(bool),
 }
 
 #[derive(Debug)]
@@ -196,7 +197,7 @@ impl AST {
         }
     }
 
-    fn parse_type(&mut self, cst: &Node, errors: &mut Vec<String>) -> Result<Type, ()> {
+    fn parse_type(&mut self, cst: &Node, _errors: &mut Vec<String>) -> Result<Type, ()> {
         match &cst.kind {
             cst::NodeKind::Unit => Ok(Type::Unit),
             cst::NodeKind::Identifier(named_type) => match named_type.as_str() {
@@ -308,6 +309,23 @@ impl AST {
         match &cst_expr.kind {
             cst::NodeKind::Unit => Ok(Expr::new(ExprKind::Unit, cst_expr.pos, Some(Type::Unit))),
             cst::NodeKind::Identifier(name) => {
+                // check builtin names
+                if name == "true" {
+                    return Ok(Expr::new(
+                        ExprKind::BooleanLiteral(true),
+                        cst_expr.pos,
+                        Some(Type::Bool),
+                    ));
+                }
+                if name == "false" {
+                    return Ok(Expr::new(
+                        ExprKind::BooleanLiteral(false),
+                        cst_expr.pos,
+                        Some(Type::Bool),
+                    ));
+                }
+
+                // resolve by scope
                 let name = match vars.scopes.resolve_var(name) {
                     Some(name) => name,
                     None => {

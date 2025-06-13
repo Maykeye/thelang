@@ -216,6 +216,9 @@ impl CodeGenNasm64 {
                     self.code.call(Operand::CodeBlock(*other_code_block_id));
                 }
 
+                IROp::LdConstBool { value, dest } => {
+                    unimplemented!();
+                }
                 IROp::LoadArg { arg: _, dest: _ } => {
                     unimplemented!();
                 }

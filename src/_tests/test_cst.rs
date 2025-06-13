@@ -176,3 +176,16 @@ fn test_arg_names() {
     r#impl("fn fun(a1:_, a2:_){}", &[("a1", "_"), ("a2", "_")]);
     r#impl("fn fun(_:(), foo: bar,){}", &[("_", "()"), ("foo", "bar")]);
 }
+
+#[test]
+fn test_cst_unaware_of_boolean_literals() {
+    fn r#impl(source: &str, expected: &str) {
+        let fun = cst_fun_from_text(source, "fun");
+        let body = fun.body.unwrap();
+        let ident = unwrap_variant!(&body.nodes[0].kind, NodeKind::Identifier);
+        assert_eq!(ident, expected, "Source<<<\n{source}\n>>>");
+    }
+    // CST needs no knowledge about booleans literals, for it true and false are just Identifier
+    r#impl("fn fun(){true}", "true");
+    r#impl("fn fun(){false}", "false");
+}

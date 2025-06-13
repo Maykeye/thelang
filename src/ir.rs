@@ -68,13 +68,26 @@ pub enum IROp {
         dest: IRReg,
     },
     /// Return a register from the function
-    Return { value: IRReg },
+    Return {
+        value: IRReg,
+    },
 
     /// Invert boolean value
-    Invert { value: IRReg, dest: IRReg },
+    Invert {
+        value: IRReg,
+        dest: IRReg,
+    },
 
     /// Load argument
-    LoadArg { arg: IRReg, dest: IRReg },
+    LoadArg {
+        arg: IRReg,
+        dest: IRReg,
+    },
+
+    LdConstBool {
+        value: bool,
+        dest: IRReg,
+    },
 }
 
 #[derive(Debug)]
@@ -201,6 +214,9 @@ impl IR {
                             func.format_reg_name(*dest),
                             func.format_reg_name(*arg),
                         ),
+                        IROp::LdConstBool { value, dest } => {
+                            format!("{} = ld.const.b {}", func.format_reg_name(*dest), value)
+                        }
                         IROp::Invert { value, dest } => format!(
                             "{} = invert.bool {}",
                             func.format_reg_name(*dest),
@@ -290,6 +306,16 @@ impl IR {
             // This is a AST code block, where everything is expression.
             // For IR we have OPs
             match &x.kind {
+                ast::ExprKind::BooleanLiteral(value) => {
+                    let dest = ir_fun.new_reg(IRTypeId::BOOL, None);
+                    let op = IROp::LdConstBool {
+                        value: *value,
+                        dest,
+                    };
+
+                    block.ops.push(op);
+                    last_reg = Some(dest);
+                }
                 ast::ExprKind::Return(value) => {
                     /*Return an expression(or () if no expression is provided)*/
                     let ret = match value.as_ref() {
