@@ -124,11 +124,28 @@ fn test_read_ident_on_eol() {
 
 #[test]
 fn test_read_ident_w_dollar() {
-    let mut cp = CharPos::from_str("A$$es\n");
+    let mut cp = CharPos::from_str("A$c\n");
     let id = read_keyword_or_identifier(&mut cp);
-    assert_eq!(id, "A$$es");
-    assert_eq!(cp.pos, Pos::new(1, 6));
-    assert_eq!(cp.offset, 5);
+    assert_eq!(id, "A$c");
+    assert_eq!(cp.pos, Pos::new(1, 4));
+    assert_eq!(cp.offset, 3);
+}
+#[test]
+fn test_read_ident_w_underscore() {
+    let mut cp = CharPos::from_str("A_c\n");
+    let id = read_keyword_or_identifier(&mut cp);
+    assert_eq!(id, "A_c");
+    assert_eq!(cp.pos, Pos::new(1, 4));
+    assert_eq!(cp.offset, 3);
+}
+
+#[test]
+fn test_read_ident_underscore() {
+    let mut cp = CharPos::from_str("_\n");
+    let id = read_keyword_or_identifier(&mut cp);
+    assert_eq!(id, "_");
+    assert_eq!(cp.pos, Pos::new(1, 2));
+    assert_eq!(cp.offset, 1);
 }
 
 #[test]
