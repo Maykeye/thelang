@@ -2,6 +2,7 @@ use crate::AST;
 use crate::ast::{ExprKind, Type};
 use crate::tokens::Pos;
 use crate::{cst::CST, lexer::tokenize};
+use pretty_assertions::assert_eq;
 
 use super::ScopeTracker;
 
@@ -193,6 +194,15 @@ fn test_return_arg() {
         _ => panic!("Unexpected expr2 {expr:?}"),
     };
     assert_eq!(arg, "ar2");
+}
+
+#[test]
+fn test_function_argument_type() {
+    let ast = ast_from_text("fn tst(x: bool){}").unwrap();
+    let func = ast.functions.get("tst").unwrap();
+    assert_eq!(func.r#type.args.len(), 1);
+    let arg = &func.r#type.args[0];
+    assert_eq!(arg.r#type, Type::Bool);
 }
 
 #[test]

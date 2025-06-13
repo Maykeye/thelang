@@ -2,6 +2,7 @@ use crate::AST;
 use crate::ast::ExprKind;
 use crate::unwrap_variant;
 use crate::{cst::CST, lexer::tokenize};
+use pretty_assertions::assert_eq;
 
 fn ast_from_text(source: &str) -> Result<AST, (AST, Vec<String>)> {
     let toks = tokenize(source).expect(&format!("Lexer failed for {source}"));

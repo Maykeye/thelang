@@ -102,12 +102,12 @@ fn test_func_name_err_recovery() {
 fn test_func_block_err_recovery() {
     assert_only_err(
         "fn err(){)}",
-        "1: 10: expression required, found instead `RParen`",
+        "1:10:expression required, found instead `RParen`",
     );
 
     assert_only_err(
         "fn err(){{)}}",
-        "1: 11: expression required, found instead `RParen`",
+        "1:11:expression required, found instead `RParen`",
     );
 }
 

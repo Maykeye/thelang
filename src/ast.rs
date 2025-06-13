@@ -358,6 +358,18 @@ impl AST {
 
                 Ok(Expr::new(kind, cst_expr.pos, Some(r#type)))
             }
+
+            cst::NodeKind::Invert(inner) => {
+                let inner = Self::parse_expr(inner, vars, errors)?;
+                if inner.r#type != Some(Type::Bool) {
+                    let msg = cst_expr.pos.report(format!("type mismatch"));
+                    errors.push(msg);
+                    return Err(());
+                }
+                let kind = ExprKind::Invert(Box::new(inner));
+                // TODO: check for inner.type == bool
+                Ok(Expr::new(kind, cst_expr.pos, Some(Type::Bool)))
+            }
             _ => unimplemented!("nyi"),
         }
     }

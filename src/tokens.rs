@@ -111,7 +111,7 @@ impl Pos {
     }
 
     pub fn report<D: Display>(&self, msg: D) -> String {
-        format!("{}: {}: {}", self.line, self.col, msg)
+        format!("{}:{}:{}", self.line, self.col, msg)
     }
 }
 impl Default for Pos {
