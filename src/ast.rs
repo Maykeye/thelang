@@ -21,10 +21,12 @@ pub struct TpFunction {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
     Function(Box<TpFunction>),
-    /// Unit type. Has exactly one instance ()
-    Unit,
     /// `!` is a so called never type, which has no instances
     Never,
+    /// Unit type. Has exactly one instance ()
+    Unit,
+    /// Boolean type: only true or false
+    Bool,
 }
 
 #[derive(Debug)]
@@ -194,10 +196,13 @@ impl AST {
         }
     }
 
-    #[allow(clippy::ptr_arg)] // _errors will be modified one day. Probs
-    fn parse_type(&mut self, cst: &Node, _errors: &mut Vec<String>) -> Result<Type, ()> {
-        match cst.kind {
+    fn parse_type(&mut self, cst: &Node, errors: &mut Vec<String>) -> Result<Type, ()> {
+        match &cst.kind {
             cst::NodeKind::Unit => Ok(Type::Unit),
+            cst::NodeKind::Identifier(named_type) => match named_type.as_str() {
+                "bool" => Ok(Type::Bool),
+                _ => unimplemented!(),
+            },
             _ => {
                 unimplemented!("TBD: return type NYI");
             }

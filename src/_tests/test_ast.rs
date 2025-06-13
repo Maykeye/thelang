@@ -194,3 +194,10 @@ fn test_return_arg() {
     };
     assert_eq!(arg, "ar2");
 }
+
+#[test]
+fn test_return_type_ok() {
+    let ast = ast_from_text("fn truth()->bool{true}").unwrap();
+    let func = ast.functions.get("trith").unwrap();
+    assert_eq!(func.r#type.return_type, Type::Unit);
+}
