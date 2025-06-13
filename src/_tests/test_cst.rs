@@ -68,6 +68,25 @@ fn test_ret() {
 }
 
 #[test]
+fn test_return_type_unit_type() {
+    let func = cst_fun_from_text("fn func_name() -> (){}", "func_name");
+    let ret_type = func.return_type.unwrap();
+    unwrap_variant!(ret_type.kind, NodeKind::Unit, ());
+}
+#[test]
+fn test_return_type_named() {
+    fn check(name: &str) {
+        let func = cst_fun_from_text(&format!("fn func_name() -> {name}{{}}"), "func_name");
+        let ret_type = func.return_type.unwrap();
+        let x = unwrap_variant!(ret_type.kind, NodeKind::Identifier);
+        assert_eq!(x, name);
+    }
+
+    check("bool");
+    check("not_standard_type");
+}
+
+#[test]
 fn test_func_name_err_recovery() {
     let (cst, err) = cst_err_from_text(
         "fn hello world(){} fn really hello(){} fn fine(){} fn aaa {}  fn fine_too(){} ",
