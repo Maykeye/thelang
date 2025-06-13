@@ -168,3 +168,8 @@ fn test_arg_names() {
     r#impl("fn fun(a1:_, a2:_){}", &[("a1", "_"), ("a2", "_")]);
     r#impl("fn fun(_:(), foo: bar,){}", &[("_", "()"), ("foo", "bar")]);
 }
+
+#[test]
+fn test_boolean_cst_level() {
+    let fun = cst_fun_from_text("fn invert(x: bool){!x}", "invert");
+}

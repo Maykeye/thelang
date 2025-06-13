@@ -13,6 +13,8 @@ pub enum TokenKind {
     LCurly,
     /// Code block ends
     RCurly,
+    /// Invert of boolean
+    Exclamation,
     /// Token separator
     Semi,
     /// Separates variable(or argument) name from type
