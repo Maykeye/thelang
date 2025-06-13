@@ -53,9 +53,9 @@ fn test_expr<F: Fn(&NodeKind)>(expr_text: &str, delta_col: usize, f: F) {
                 "<<<\n{source}\n>>>\n{:?}",
                 body.nodes
             );
-            assert!(matches!(
-            &tail.kind, NodeKind::Identifier(x) if x == "TAIL"
-            ));
+
+            let x = unwrap_cst_kind!(&tail.kind, NodeKind::Identifier);
+            assert_eq!(x, "TAIL");
         }
     };
     step(PURE_EXPR);
@@ -67,53 +67,46 @@ fn test_expr<F: Fn(&NodeKind)>(expr_text: &str, delta_col: usize, f: F) {
 #[test]
 fn test_expr_term_unit() {
     test_expr("()", 0, |node| {
-        assert!(matches!(&node, NodeKind::Unit));
+        unwrap_cst_kind!(&node, NodeKind::Unit, ());
     });
 }
 #[test]
 fn test_expr_term_codeblock() {
     test_expr("{(a)}", 0, |node| {
-        assert!(matches!(&node, NodeKind::CodeBlock(_)))
+        unwrap_cst_kind!(&node, NodeKind::CodeBlock);
     });
 }
 
 #[test]
 fn test_expr_term_identifier() {
     test_expr("var_name", 0, |node| {
-        assert!(matches!(&node, NodeKind::Identifier(x) if x == "var_name"));
+        let x = unwrap_cst_kind!(&node, NodeKind::Identifier);
+        assert_eq!(x, "var_name");
     });
 }
 
 #[test]
 fn test_expr_term_parens() {
     test_expr("(abc)", 1, |node| {
-        assert!(matches!(
-            &node,
-            NodeKind::Identifier(x) if x == "abc"
-        ))
+        let x = unwrap_cst_kind!(&node, NodeKind::Identifier);
+        assert_eq!(x, "abc");
     });
 }
 
 //---- UNARY
 #[test]
 fn test_expr_unary_return_w_expr() {
-    test_expr("return ret_val", 0, |node| match node {
-        NodeKind::Return(rv) => {
-            assert!(matches!(
-                &rv.kind,
-                NodeKind::Identifier(x) if x == "ret_val"
-            ))
-        }
-        _ => panic!("return expected"),
+    test_expr("return ret_val", 0, |node| {
+        let rv = unwrap_cst_kind!(node, NodeKind::Return);
+        let name = unwrap_cst_kind!(&rv.kind, NodeKind::Identifier);
+        assert_eq!(name, "ret_val");
     });
 }
 #[test]
 fn test_expr_unary_return_wo_expr() {
-    test_expr("return", 0, |node| match node {
-        NodeKind::Return(rv) => {
-            assert!(matches!(&rv.kind, NodeKind::Unit))
-        }
-        _ => panic!("return expected"),
+    test_expr("return", 0, |node| {
+        let rv = unwrap_cst_kind!(node, NodeKind::Return);
+        unwrap_cst_kind!(&rv.kind, NodeKind::Unit, ());
     });
 }
 
