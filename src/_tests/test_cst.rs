@@ -1,8 +1,10 @@
 use crate::cst::NodeKind;
-use crate::tokens::Tokens;
+use crate::tokens::{Pos, TokenKind, Tokens};
 use crate::unwrap_variant;
 use crate::{CST, tokenize};
 use pretty_assertions::assert_eq;
+
+use super::CstError;
 
 fn cst_fun_from_text(text: &str, func_name: &str) -> crate::cst::Fn {
     let t = tokenize(text).expect(&format!("Lexer failed for {text}"));
@@ -11,11 +13,11 @@ fn cst_fun_from_text(text: &str, func_name: &str) -> crate::cst::Fn {
         "can't extract function {func_name} for <<<\n{text}\n>>>"
     ))
 }
-fn cst_err_from_text(text: &str) -> (CST, Vec<String>) {
+fn cst_err_from_text(text: &str) -> (CST, Vec<CstError>) {
     let t = tokenize(text).unwrap();
     CST::from_tokens(&t).unwrap_err()
 }
-fn assert_only_err(text: &str, err_msg: &str) {
+fn assert_only_err(text: &str, expected_err: CstError) {
     let (cst, err) = cst_err_from_text(text);
     assert_eq!(
         err.len(),
@@ -24,7 +26,7 @@ fn assert_only_err(text: &str, err_msg: &str) {
     );
     assert!(cst.functions.is_empty());
     assert_eq!(
-        err[0], err_msg,
+        err[0], expected_err,
         "Source:\n{text}\n(Left = got; right = expected)"
     );
 }
@@ -101,13 +103,13 @@ fn test_func_name_err_recovery() {
 #[test]
 fn test_func_block_err_recovery() {
     assert_only_err(
-        "fn err(){)}",
-        "1:10:expression required, found instead `RParen`",
+        "fn err(){\n)}",
+        CstError::ExpressionRequired(Pos::new(2, 1), TokenKind::RParen),
     );
 
     assert_only_err(
-        "fn err(){{)}}",
-        "1:11:expression required, found instead `RParen`",
+        "fn err(){{\n)}}",
+        CstError::ExpressionRequired(Pos::new(2, 1), TokenKind::RParen),
     );
 }
 

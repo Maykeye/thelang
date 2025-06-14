@@ -31,6 +31,9 @@ pub enum TokenKind {
     /// return <expr> }
     /// return }
     Return,
+
+    /// END OF  FILE
+    EOF,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,6 +80,13 @@ impl<'a> Tokens<'a> {
         } else {
             format!("{:?}", self.tokens[i].kind)
         }
+    }
+
+    pub fn get_nth_kind(&self, i: usize) -> TokenKind {
+        self.tokens
+            .get(i)
+            .map(|t| t.kind.clone())
+            .unwrap_or(TokenKind::EOF)
     }
     pub fn get_nth_pos(&self, i: usize) -> Pos {
         if self.len() == 0 {

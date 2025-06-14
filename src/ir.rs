@@ -437,7 +437,7 @@ impl IR {
         let cst = match cst::CST::from_tokens(&tokens) {
             Ok(cst) => cst,
             Err(err) => {
-                return Err(err.1);
+                return Err(err.1.iter().map(|err| format!("{err:?}")).collect());
             }
         };
         let ast = match AST::from_cst(cst) {

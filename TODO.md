@@ -3,7 +3,7 @@
 ## Immediate
 * Refactor Errors to Enum
  * [x] AST
- * [ ] CST
+ * [X] CST
  * [ ] IR
  * [ ] NASM64
   

@@ -19,10 +19,6 @@ impl Arg {
     }
 }
 
-trait GetPos {
-    fn get_pos(&self) -> Pos;
-}
-
 #[derive(Debug)]
 pub struct Fn {
     pub name: String,
@@ -44,12 +40,6 @@ impl Fn {
             args: vec![],
             return_type: None,
         }
-    }
-}
-
-impl GetPos for Fn {
-    fn get_pos(&self) -> Pos {
-        self.pos
     }
 }
 
@@ -123,13 +113,37 @@ impl Node {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum CstError {
+    /// Expected {code block}
+    CodeBlockExpected(Pos),
+    /// Expected } or ; but got
+    ExpressionSeparatorExpected(Pos, TokenKind),
+    /// Expected at {0} token kind={1}, got {2}
+    GenericTokenKindExpected(Pos, TokenKind, TokenKind),
+    /// Expected ) for ( at
+    RParenExpected(Pos, Pos, TokenKind),
+    /// Expected } for { at
+    RCurlyExpected(Pos, Pos, TokenKind),
+    /// Expected expression, but instead found unexpected token
+    ExpressionRequired(Pos, TokenKind),
+    /// Expected expression, but instead found unexpected token
+    TypeRequired(Pos, TokenKind),
+    /// Unexpected top-level token {1} at {0}
+    UnexpectedTopLevelToken(Pos, TokenKind),
+    /// Function declared at {0} name {1} declared previously at {2}
+    FunctionNameDuplicated(Pos, String, Pos),
+    /// Identifier for function name expected
+    FunctionNameIdentifierExpected(Pos, TokenKind),
+}
+
 #[derive(Debug)]
 #[allow(clippy::upper_case_acronyms)]
 pub struct CST {
     pub functions: HashMap<String, Fn>,
 }
 
-type OptExprParsingResult = Option<(usize, Result<Node, String>)>;
+type OptExprParsingResult = Option<(usize, Result<Node, CstError>)>;
 
 impl CST {
     pub fn new() -> Self {
@@ -138,30 +152,6 @@ impl CST {
         }
     }
 
-    /// Find a token that must separate exprssion from other and return its position.
-    /// It means we are looking for the next semicolon or RCurly as they 100% end the whole
-    /// expression. Nested expressions are skipped
-    /// Returned position: position of the separator
-    pub fn error_recovery_find_expr_end(toks: &Tokens, mut i: usize) -> usize {
-        let mut brace_level = 0;
-
-        while i < toks.len() {
-            match toks[i].kind {
-                TokenKind::RCurly if brace_level == 0 => return i,
-                TokenKind::Semi if brace_level == 0 => return i,
-                TokenKind::RCurly => {
-                    brace_level -= 1;
-                }
-                TokenKind::LCurly => {
-                    brace_level += 1;
-                }
-                _ => (),
-            }
-
-            i += 1;
-        }
-        i
-    }
     /// Find a block termination
     /// It means we are looking for the next RCurly as it 100% ends
     /// block. Nested blocks are skipped
@@ -211,35 +201,16 @@ impl CST {
         i
     }
 
-    fn chkerr_check_name_duplicate<V: GetPos>(
-        &self,
-        map: &HashMap<String, V>,
-        name: &str,
-    ) -> Result<(), String> {
-        if let Some(other) = map.get(name) {
-            Err(format!(
-                "Duplicate of the name {}, previously the name was used at {:?}",
-                name,
-                other.get_pos()
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
     // Check expression separator.
     // If token doesn't terminate the expression(which is semicolon or RCurly),
     // add an error
-    pub fn check_expression_separator(toks: &Tokens, index: &mut usize) -> Result<(), String> {
+    pub fn check_expression_separator(toks: &Tokens, index: &mut usize) -> Result<(), CstError> {
         let mut i = *index;
+        let i0 = i;
         // now we need to check separator: `;` or `}`
         if toks.kind_eq(i, TokenKind::Semi) || toks.kind_eq(i, TokenKind::RCurly) {
             return Ok(());
         }
-        let msg = format!(
-            "after expression only acceptable tokens are `;` and `}}`, got {}",
-            toks.get_nth_kind_description(i)
-        );
 
         while i < toks.len() {
             match toks[i].kind {
@@ -252,7 +223,10 @@ impl CST {
             }
         }
         *index = i;
-        Err(msg)
+        Err(CstError::ExpressionSeparatorExpected(
+            toks.get_nth_pos(i0),
+            toks.get_nth_kind(i0),
+        ))
     }
 
     /// Parse terminal expression, if curent token looks like it begins it.
@@ -280,9 +254,14 @@ impl CST {
             if toks.kind_eq(i, TokenKind::RParen) {
                 return Some((i + 1, Ok(expr)));
             }
-            let end_pos = toks.get_nth_pos(i);
-            let msg = end_pos.report(format!("RParen expected for closing LParen at {start_pos}"));
-            return Some((i, Err(msg)));
+            return Some((
+                i,
+                Err(CstError::RParenExpected(
+                    toks.get_nth_pos(i),
+                    start_pos,
+                    toks.get_nth_kind(i),
+                )),
+            ));
         }
 
         // IDENT
@@ -308,13 +287,14 @@ impl CST {
         None
     }
 
-    // TODO - make normal enum for errors
-    fn errmsg_expression_required(toks: &Tokens, i: usize) -> OptExprParsingResult {
-        let msg = toks.get_nth_pos(i).report(format!(
-            "expression required, found instead `{}`",
-            toks.get_nth_kind_description(i)
-        ));
-        Some((i, Err(msg)))
+    fn err_expression_required(toks: &Tokens, i: usize) -> OptExprParsingResult {
+        Some((
+            i,
+            Err(CstError::ExpressionRequired(
+                toks.get_nth_pos(i),
+                toks.get_nth_kind(i),
+            )),
+        ))
     }
 
     /// Parse an unary expression
@@ -338,7 +318,7 @@ impl CST {
             let (i, base) = if let Some(i_base) = Self::parse_expr_term(toks, i + 1) {
                 i_base
             } else {
-                return Self::errmsg_expression_required(toks, i + 1);
+                return Self::err_expression_required(toks, i + 1);
             };
 
             let inverted = base.map(|node| Node::new_invert(node, pos));
@@ -356,12 +336,12 @@ impl CST {
     }
 
     /// Wrapper around `parse_expr_opt`, but the expression is required
-    fn parse_expr_required(toks: &Tokens, i: usize) -> (usize, Result<Node, String>) {
+    fn parse_expr_required(toks: &Tokens, i: usize) -> (usize, Result<Node, CstError>) {
         let parsed = Self::parse_expr_opt(toks, i);
         match parsed {
             Some(parsed) => parsed,
             None => {
-                return Self::errmsg_expression_required(toks, i).unwrap();
+                return Self::err_expression_required(toks, i).unwrap();
             }
         }
     }
@@ -369,19 +349,17 @@ impl CST {
     /// Parses code-block
     /// CODE_BLOCK ::= `{` {`;`} [EXPR {`;` {`;`} EXPR} {`;`}] `}`
     /// Returns position after the code block, i.e after '}'
-    // TODO: use errors: vec<string>
-    fn parse_code_block(toks: &Tokens, mut i: usize) -> (usize, Result<CodeBlock, String>) {
+    // TODO: use errors: vec<csterror>
+    fn parse_code_block(toks: &Tokens, mut i: usize) -> (usize, Result<CodeBlock, CstError>) {
         let mut cb = CodeBlock::new(toks[i].pos);
         if !toks.kind_eq(i, TokenKind::LCurly) {
             i = Self::error_recovery_find_current_block_end(toks, i);
             if toks.kind_eq(i, TokenKind::RCurly) {
                 i += 1;
             }
-            return (
-                i,
-                Err("function definition: code block expected".to_string()),
-            );
+            return (i, Err(CstError::CodeBlockExpected(toks[i].pos)));
         }
+        let start_pos_i = i;
         i += 1;
 
         while i < toks.len() {
@@ -427,33 +405,40 @@ impl CST {
 
         // }
         if !toks.kind_eq(i, TokenKind::RCurly) {
+            let unexpected_token_i = i;
             i = Self::error_recovery_find_current_block_end(toks, i);
             if toks.kind_eq(i, TokenKind::RCurly) {
                 i += 1;
             }
             return (
                 i,
-                Err("function definition: end of block expected".to_string()),
+                Err(CstError::RCurlyExpected(
+                    toks.get_nth_pos(unexpected_token_i),
+                    toks.get_nth_pos(start_pos_i),
+                    toks.get_nth_kind(unexpected_token_i),
+                )),
             );
         }
         // End of the function definition
         (i + 1, Ok(cb))
     }
 
-    pub fn parse_type(toks: &Tokens, i: usize) -> (usize, Result<Node, String>) {
+    pub fn parse_type(toks: &Tokens, i: usize) -> (usize, Result<Node, CstError>) {
+        // ()
         if toks.kind_eq(i, TokenKind::LParen) && toks.kind_eq(i + 1, TokenKind::RParen) {
             return (i + 2, Ok(Node::new(NodeKind::Unit, toks[i].pos)));
         }
 
+        // bool/int/CustomNamedStruct
         (
             i + 1,
             if let Some(ident) = toks.get_identifier(i) {
                 Ok(Node::new(NodeKind::Identifier(ident), toks[i].pos))
             } else {
-                Err(toks.get_nth_pos(i).report(format!(
-                    "Type not implemented beyond simlpest; found token: {}",
-                    toks.get_nth_kind_description(i)
-                )))
+                Err(CstError::TypeRequired(
+                    toks.get_nth_pos(i),
+                    toks.get_nth_kind(i),
+                ))
             },
         )
     }
@@ -465,7 +450,7 @@ impl CST {
         toks: &Tokens,
         mut i: usize,
         args: &mut Vec<Arg>,
-    ) -> (usize, Result<(), String>) {
+    ) -> (usize, Result<(), CstError>) {
         if toks.kind_eq(i, TokenKind::RParen) {
             return (i, Ok(()));
         }
@@ -475,10 +460,14 @@ impl CST {
                 let argument_pos = toks[i].pos;
                 i += 1;
                 if !toks.kind_eq(i, TokenKind::Colon) {
-                    let msg = toks
-                        .get_nth_pos(i)
-                        .report("function declaration: arguments parsing: colon expected");
-                    return (i, Err(msg));
+                    return (
+                        i,
+                        Err(CstError::GenericTokenKindExpected(
+                            toks.get_nth_pos(i),
+                            TokenKind::Colon,
+                            toks.get_nth_kind(i),
+                        )),
+                    );
                 }
                 i += 1;
 
@@ -497,26 +486,45 @@ impl CST {
                 }
                 continue;
             }
-            let msg = toks.get_nth_pos(i).report("argument expected");
-            return (i, Err(msg));
+            return (
+                i,
+                Err(CstError::GenericTokenKindExpected(
+                    toks.get_nth_pos(i),
+                    TokenKind::Identifier("argument name".to_string()),
+                    toks.get_nth_kind(i),
+                )),
+            );
         }
 
-        let msg = toks
-            .get_nth_pos(i)
-            .report("function declaration: arguments parsing: EOF met before RParen");
-        (i, Err(msg))
+        (
+            i,
+            Err(CstError::GenericTokenKindExpected(
+                toks.get_nth_pos(i),
+                TokenKind::Identifier("arguments".to_string()),
+                toks.get_nth_kind(i),
+            )),
+        )
     }
 
-    pub fn parse_fn(toks: &Tokens, mut i: usize) -> (usize, Result<Fn, String>) {
+    pub fn parse_fn(toks: &Tokens, mut i: usize) -> (usize, Result<Fn, CstError>) {
         let i0 = i;
 
         // FN
         if !toks.kind_eq(i, TokenKind::Fn) {
+            let i_invalid = i;
+            // Shouldn't happen as we are called after encountering `fn` token
             i = Self::error_recovery_find_next_block_end(toks, i);
             if toks.kind_eq(i, TokenKind::RCurly) {
                 i += 1;
             }
-            return (i, Err("function declaration: expected fn".to_string()));
+            return (
+                i,
+                Err(CstError::GenericTokenKindExpected(
+                    toks.get_nth_pos(i_invalid),
+                    TokenKind::Fn,
+                    toks.get_nth_kind(i_invalid),
+                )),
+            );
         }
         i += 1;
 
@@ -524,17 +532,25 @@ impl CST {
         let name = match toks.get_identifier(i) {
             Some(name) => name,
             None => {
+                let i_invalid = i;
                 i = Self::error_recovery_find_next_block_end(toks, i);
                 if toks.kind_eq(i, TokenKind::RCurly) {
                     i += 1;
                 }
-                return (i, Err("identifier(function name) expected".to_string()));
+                return (
+                    i,
+                    Err(CstError::FunctionNameIdentifierExpected(
+                        toks.get_nth_pos(i_invalid),
+                        toks.get_nth_kind(i_invalid),
+                    )),
+                );
             }
         };
         i += 1;
         let mut func = Fn::new(name, toks[i0].pos);
 
         // (Args
+        let i_lparen = i;
         if !toks.kind_eq(i, TokenKind::LParen) {
             i = Self::error_recovery_find_next_block_end(toks, i);
             if toks.kind_eq(i, TokenKind::RCurly) {
@@ -542,7 +558,11 @@ impl CST {
             }
             return (
                 i,
-                Err("function declaration: arguments expected".to_string()),
+                Err(CstError::GenericTokenKindExpected(
+                    toks.get_nth_pos(i_lparen),
+                    TokenKind::LParen,
+                    toks.get_nth_kind(i_lparen),
+                )),
             );
         }
         i += 1;
@@ -559,13 +579,18 @@ impl CST {
 
         // )
         if !toks.kind_eq(i, TokenKind::RParen) {
+            let i_invalid = i;
             i = Self::error_recovery_find_next_block_end(toks, i);
             if toks.kind_eq(i, TokenKind::RCurly) {
                 i += 1;
             }
             return (
                 i,
-                Err("function declaration: end of arguments expected".to_string()),
+                Err(CstError::RParenExpected(
+                    toks.get_nth_pos(i_invalid),
+                    toks.get_nth_pos(i_lparen),
+                    toks.get_nth_kind(i_invalid),
+                )),
             );
         }
         i += 1;
@@ -597,7 +622,7 @@ impl CST {
         (i, Ok(func))
     }
 
-    pub fn from_tokens(tokens: &[Token]) -> Result<CST, (CST, Vec<String>)> {
+    pub fn from_tokens(tokens: &[Token]) -> Result<CST, (CST, Vec<CstError>)> {
         let toks = Tokens::new(tokens);
         let mut i = 0;
         let mut cst = CST::new();
@@ -619,19 +644,22 @@ impl CST {
                     };
                     assert!(i > i0, "internal error: parser stuck at fn parsing");
 
-                    if let Err(msg) = cst.chkerr_check_name_duplicate(&cst.functions, &func.name) {
-                        errors.push(toks[i0].pos.report(msg));
+                    if let Some(other) = cst.functions.get(&func.name) {
+                        errors.push(CstError::FunctionNameDuplicated(
+                            toks[i0].pos,
+                            func.name,
+                            other.pos,
+                        ));
                         continue;
                     }
 
                     cst.functions.insert(func.name.clone(), func);
                 }
                 _ => {
-                    errors.push(
-                        toks[i0]
-                            .pos
-                            .report(format!("Unexpected top-level token {:?}", toks[i].kind)),
-                    );
+                    errors.push(CstError::UnexpectedTopLevelToken(
+                        toks[i0].pos,
+                        toks[i0].kind.clone(),
+                    ));
                     i = Self::error_recovery_find_next_block_end(&toks, i);
                     if toks.kind_eq(i, TokenKind::RCurly) {
                         i += 1;
