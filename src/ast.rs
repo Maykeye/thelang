@@ -2,14 +2,19 @@ use std::collections::HashMap;
 
 use crate::{
     cst::{self, CST, Node},
-    tokens::Pos,
+    tokens::{Pos, TokenKind},
 };
+
+// TODO: use integer id as in IR
+#[derive(Debug, PartialEq, Eq)]
+pub struct AstTypeId(String);
 
 // TODO: replace with Variable?
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TpFunctionArg {
     pub name: String,
     pub r#type: Type,
+    pub pos: Pos,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -176,6 +181,72 @@ impl ScopeTracker {
     }
 }
 
+/// AstErrorContextKind shows in which immediate context the error happened
+#[derive(Debug, PartialEq, Eq)]
+pub enum AstErrorContextKind {
+    FunctionDeclaration,
+    BinOp(TokenKind),
+    UnaryOp(TokenKind),
+    FunctionReturn,
+    CodeBlockReturn,
+    None,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct AstErrorContext {
+    error_pos: Pos,
+    kind: AstErrorContextKind,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AstError {
+    /// fn foo(diff_args_have_same_name:(), diff_args_have_same_name:())
+    FunctionArgumentNameDuplicated(AstErrorContext, String, Pos),
+    /// fn foo1(differerent_funcs:())
+    /// fn foo1(have_the_same_name:())
+    FunctionNameDuplicated(AstErrorContext, String, Pos),
+    /// "Abc"*"def"
+    TypeConversion(AstErrorContext, AstTypeId, AstTypeId),
+    /// 1+this_variable_was_not_declared
+    UndeclaredVariable(AstErrorContext, String),
+    /// let a; return a;
+    UndeclaredVariableType(AstErrorContext, String),
+    // fn this_func_has_no_body();
+    UndefinedFunction(AstErrorContext, String),
+}
+
+impl AstError {
+    fn new_func_arg_name_duplicated(pos: Pos, arg_name: String, other_pos: Pos) -> AstError {
+        let ctx = AstErrorContext {
+            error_pos: pos,
+            kind: AstErrorContextKind::FunctionDeclaration,
+        };
+        AstError::FunctionArgumentNameDuplicated(ctx, arg_name, other_pos)
+    }
+    fn new_func_name_duplicated(pos: Pos, func_name: String, other_pos: Pos) -> AstError {
+        let ctx = AstErrorContext {
+            error_pos: pos,
+            kind: AstErrorContextKind::FunctionDeclaration,
+        };
+        AstError::FunctionNameDuplicated(ctx, func_name, other_pos)
+    }
+    fn new_undeclared_variable(pos: Pos, variable: impl Into<String>) -> AstError {
+        let ctx = AstErrorContext {
+            error_pos: pos,
+            kind: AstErrorContextKind::None,
+        };
+        AstError::UndeclaredVariable(ctx, variable.into())
+    }
+
+    fn new_undefined_function(pos: Pos, function_name: impl Into<String>) -> AstError {
+        let ctx = AstErrorContext {
+            error_pos: pos,
+            kind: AstErrorContextKind::FunctionDeclaration,
+        };
+        AstError::UndefinedFunction(ctx, function_name.into())
+    }
+}
+
 struct ScopedVariablesData {
     scopes: ScopeTracker,
     data: HashMap<String, Variable>,
@@ -197,7 +268,7 @@ impl AST {
         }
     }
 
-    fn parse_type(&mut self, cst: &Node, _errors: &mut Vec<String>) -> Result<Type, ()> {
+    fn parse_type(&mut self, cst: &Node, _errors: &mut Vec<AstError>) -> Result<Type, ()> {
         match &cst.kind {
             cst::NodeKind::Unit => Ok(Type::Unit),
             cst::NodeKind::Identifier(named_type) => match named_type.as_str() {
@@ -213,7 +284,7 @@ impl AST {
     fn parse_cst_function_declarations_args(
         &mut self,
         cst_func: &cst::Fn,
-        errors: &mut Vec<String>,
+        errors: &mut Vec<AstError>,
     ) -> Vec<TpFunctionArg> {
         let mut args_tp: Vec<TpFunctionArg> = vec![];
         for (i, cst_arg) in cst_func.args.iter().enumerate() {
@@ -224,12 +295,13 @@ impl AST {
             };
 
             // Check argument name overshadowing
-            let same_name_exist = args_tp.iter().any(|arg| arg.name == name);
-            if same_name_exist {
-                let msg = cst_arg
-                    .pos
-                    .report(format!("Argument {} already exists", name));
-                errors.push(msg);
+            if let Some(other) = args_tp.iter().find(|arg| arg.name == name) {
+                errors.push(AstError::new_func_arg_name_duplicated(
+                    cst_arg.pos,
+                    name,
+                    other.pos,
+                ));
+                continue;
             }
 
             // Get type
@@ -238,7 +310,11 @@ impl AST {
                 .unwrap_or(Type::Unit);
 
             // And finally put it into function arguments
-            args_tp.push(TpFunctionArg { name, r#type });
+            args_tp.push(TpFunctionArg {
+                name,
+                r#type,
+                pos: cst_arg.pos,
+            });
         }
         args_tp
     }
@@ -246,7 +322,7 @@ impl AST {
     fn parse_cst_function_declarations<'a>(
         &mut self,
         cst: &'a CST,
-        errors: &mut Vec<String>,
+        errors: &mut Vec<AstError>,
     ) -> HashMap<String, &'a cst::Fn> {
         let mut mappings = HashMap::default();
         // Prepare functions headers
@@ -254,11 +330,11 @@ impl AST {
             // Ensure such function doesn't override existing function
             let full_name = cst_func.name.clone();
             if let Some(other) = self.functions.get(&full_name) {
-                let msg = cst_func.pos.report(format!(
-                    "function `{}` already declared at {:?}",
-                    &full_name, other.decl_pos
+                errors.push(AstError::new_func_name_duplicated(
+                    cst_func.pos,
+                    full_name,
+                    other.decl_pos,
                 ));
-                errors.push(msg);
                 continue;
             }
 
@@ -288,15 +364,20 @@ impl AST {
     }
 
     fn check_type_implicit_conversion(
-        pos: Pos,
         from: &Type,
         to: &Type,
-        errors: &mut Vec<String>,
+        errors: &mut Vec<AstError>,
+        get_ctx: impl Fn() -> AstErrorContext,
     ) -> bool {
         if *from == *to {
             true
         } else {
-            errors.push(pos.report(format!("can't convert type {:?} to {:?}", from, to)));
+            errors.push(AstError::TypeConversion(
+                get_ctx(),
+                AstTypeId(format!("{:?}", from)),
+                AstTypeId(format!("{:?}", to)),
+            ));
+
             false
         }
     }
@@ -304,7 +385,7 @@ impl AST {
     fn parse_expr(
         cst_expr: &cst::Node,
         vars: &ScopedVariablesData,
-        errors: &mut Vec<String>,
+        errors: &mut Vec<AstError>,
     ) -> Result<Expr, ()> {
         match &cst_expr.kind {
             cst::NodeKind::Unit => Ok(Expr::new(ExprKind::Unit, cst_expr.pos, Some(Type::Unit))),
@@ -329,8 +410,7 @@ impl AST {
                 let name = match vars.scopes.resolve_var(name) {
                     Some(name) => name,
                     None => {
-                        let msg = cst_expr.pos.report(format!("unknown variable {name}"));
-                        errors.push(msg);
+                        errors.push(AstError::new_undeclared_variable(cst_expr.pos, name));
                         return Err(());
                     }
                 };
@@ -342,10 +422,13 @@ impl AST {
                 let r#type = match &var_data.r#type {
                     Some(tp) => tp.clone(),
                     None => {
-                        let msg = cst_expr
-                            .pos
-                            .report(format!("variable type for {name} is not known"));
-                        errors.push(msg);
+                        errors.push(AstError::UndeclaredVariableType(
+                            AstErrorContext {
+                                error_pos: cst_expr.pos,
+                                kind: AstErrorContextKind::None,
+                            },
+                            name.to_string(),
+                        ));
                         return Err(());
                     }
                 };
@@ -362,8 +445,14 @@ impl AST {
             cst::NodeKind::Invert(inner) => {
                 let inner = Self::parse_expr(inner, vars, errors)?;
                 if inner.r#type != Some(Type::Bool) {
-                    let msg = cst_expr.pos.report(format!("type mismatch"));
-                    errors.push(msg);
+                    errors.push(AstError::TypeConversion(
+                        AstErrorContext {
+                            error_pos: cst_expr.pos,
+                            kind: AstErrorContextKind::UnaryOp(TokenKind::Exclamation),
+                        },
+                        AstTypeId(format!("{:?}", inner.r#type)),
+                        AstTypeId("bool".to_string()),
+                    ));
                     return Err(());
                 }
                 let kind = ExprKind::Invert(Box::new(inner));
@@ -377,7 +466,7 @@ impl AST {
     fn parse_code_block(
         cst_cb: &cst::CodeBlock,
         vars: &mut ScopedVariablesData,
-        errors: &mut Vec<String>,
+        errors: &mut Vec<AstError>,
     ) -> Option<CodeBlock> {
         vars.scopes.push_scope();
         let data = Self::parse_code_block_impl(cst_cb, vars, errors);
@@ -388,7 +477,7 @@ impl AST {
     fn parse_code_block_impl(
         cst_cb: &cst::CodeBlock,
         vars: &mut ScopedVariablesData,
-        errors: &mut Vec<String>,
+        errors: &mut Vec<AstError>,
     ) -> Option<CodeBlock> {
         let pos = cst_cb.pos;
         let mut code_block = CodeBlock::new(pos);
@@ -420,10 +509,13 @@ impl AST {
                         let new_type = expr.r#type.as_ref().unwrap();
                         // TODO: return or panic of expt type not yet defined?
                         Self::check_type_implicit_conversion(
-                            cst_node.pos,
                             new_type,
                             &current_return_type,
                             errors,
+                            || AstErrorContext {
+                                error_pos: cst_node.pos,
+                                kind: AstErrorContextKind::FunctionReturn,
+                            },
                         );
                     }
 
@@ -439,14 +531,19 @@ impl AST {
 
                 cst::NodeKind::CodeBlock(cst_nested_cb) => {
                     let new_cb = Self::parse_code_block(cst_nested_cb, vars, errors)?;
-                    let last_pos = new_cb.last_expr_pos();
                     let block_type = new_cb.exprs.last().map_or(Type::Unit, |t| {
                         t.r#type.as_ref().expect("Internal error").clone()
                     });
 
                     let abort = match (&code_block.return_type, &new_cb.return_type) {
                         (Some(old_type), Some(new_type)) => !Self::check_type_implicit_conversion(
-                            last_pos, new_type, old_type, errors,
+                            new_type,
+                            old_type,
+                            errors,
+                            || AstErrorContext {
+                                error_pos: cst_nested_cb.pos,
+                                kind: AstErrorContextKind::CodeBlockReturn,
+                            },
                         ),
                         (None, Some(new_type)) => {
                             code_block.return_type = Some(new_type.clone());
@@ -480,7 +577,7 @@ impl AST {
 
     fn parse_cst_function_definition(
         &mut self,
-        errors: &mut Vec<String>,
+        errors: &mut Vec<AstError>,
         mappings: &HashMap<String, &cst::Fn>,
     ) {
         for func in self.functions.values_mut() {
@@ -491,10 +588,7 @@ impl AST {
             let cst_body = match &cst_func.body {
                 Some(body) => body,
                 None => {
-                    let msg = func
-                        .decl_pos
-                        .report(format!("{}: function body doesn't exist", &func.name));
-                    errors.push(msg);
+                    errors.push(AstError::new_undefined_function(func.decl_pos, &func.name));
                     continue;
                 }
             };
@@ -545,20 +639,18 @@ impl AST {
             // We need to make sure return type can be converted to the function return type
             match code_block.return_type.as_ref() {
                 None => {
-                    // TODO: last expr type
-                    let msg = code_block
-                        .last_expr_pos()
-                        .report("internal error: no type for function body found");
-                    errors.push(msg);
-                    continue;
+                    panic!("internal error: no type for function body found");
                 }
 
                 Some(r#type) => {
                     Self::check_type_implicit_conversion(
-                        code_block.last_expr_pos(),
                         r#type,
                         &func.r#type.return_type,
                         errors,
+                        || AstErrorContext {
+                            error_pos: code_block.last_expr_pos(),
+                            kind: AstErrorContextKind::None,
+                        },
                     );
                 }
             }
@@ -567,7 +659,7 @@ impl AST {
         }
     }
 
-    pub fn from_cst(cst: CST) -> Result<AST, (AST, Vec<String>)> {
+    pub fn from_cst(cst: CST) -> Result<AST, (AST, Vec<AstError>)> {
         let mut ast = AST::new();
         let mut errors = vec![];
         let fn_mappings = ast.parse_cst_function_declarations(&cst, &mut errors);

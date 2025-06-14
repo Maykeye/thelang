@@ -425,6 +425,7 @@ impl IR {
     }
 
     pub fn from_thelan<S: Into<String>>(source: S) -> Result<IR, Vec<String>> {
+        // TODO:  use error instead of stings
         let source: String = source.into();
         let tokens = match crate::lexer::tokenize(&source) {
             Ok(tokens) => tokens,
@@ -442,7 +443,7 @@ impl IR {
         let ast = match AST::from_cst(cst) {
             Ok(ast) => ast,
             Err(err) => {
-                return Err(err.1);
+                return Err(err.1.iter().map(|err| format!("{err:?}")).collect());
             }
         };
         IR::from_ast(&ast)

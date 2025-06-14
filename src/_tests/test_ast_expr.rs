@@ -1,10 +1,13 @@
 use crate::AST;
-use crate::ast::ExprKind;
+use crate::ast::{AstErrorContextKind, ExprKind};
+use crate::tokens::{Pos, TokenKind};
 use crate::unwrap_variant;
 use crate::{cst::CST, lexer::tokenize};
 use pretty_assertions::assert_eq;
 
-fn ast_from_text(source: &str) -> Result<AST, (AST, Vec<String>)> {
+use super::AstError;
+
+fn ast_from_text(source: &str) -> Result<AST, (AST, Vec<AstError>)> {
     let toks = tokenize(source).expect(&format!("Lexer failed for {source}"));
     let cst = CST::from_tokens(&toks).expect(&format!("CST failed for {source}"));
     AST::from_cst(cst)
@@ -25,17 +28,27 @@ fn test_invert_ok() {
 fn test_invert_is_not_unit_type() {
     let ast = ast_from_text("fn inv(x: bool) {\n!x}");
     let err = ast.unwrap_err().1;
-    assert_eq!(
-        err[0],
-        "2:1: type mismatch for function return value: () expected, got bool"
-    );
+
     assert_eq!(err.len(), 1);
+    let (ctx, from, to) = unwrap_variant!(&err[0], AstError::TypeConversion, 3);
+    assert_eq!(ctx.error_pos, Pos::new(2, 1));
+    assert_eq!(ctx.kind, AstErrorContextKind::FunctionReturn);
+    assert_eq!(from.0, "bool");
+    assert_eq!(to.0, "()");
 }
 
 #[test]
 fn test_invert_requires_bool() {
     let ast = ast_from_text("fn inv(x: ()){\n!x}");
     let err = ast.unwrap_err().1;
-    assert_eq!(err[0], "2:1: type mismatch for !: bool expected, got ()");
+
     assert_eq!(err.len(), 1);
+    let (ctx, from, to) = unwrap_variant!(&err[0], AstError::TypeConversion, 3);
+    assert_eq!(ctx.error_pos, Pos::new(2, 1));
+    assert_eq!(
+        ctx.kind,
+        AstErrorContextKind::UnaryOp(TokenKind::Exclamation)
+    );
+    assert_eq!(from.0, "()");
+    assert_eq!(to.0, "bool");
 }

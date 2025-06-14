@@ -4,9 +4,9 @@ use crate::tokens::Pos;
 use crate::{cst::CST, lexer::tokenize};
 use pretty_assertions::assert_eq;
 
-use super::ScopeTracker;
+use super::{AstError, ScopeTracker};
 
-fn ast_from_text(source: &str) -> Result<AST, (AST, Vec<String>)> {
+fn ast_from_text(source: &str) -> Result<AST, (AST, Vec<AstError>)> {
     let toks = tokenize(source).expect(&format!("Lexer failed for {source}"));
     let cst = CST::from_tokens(&toks).expect(&format!("CST failed for {source}"));
     AST::from_cst(cst)

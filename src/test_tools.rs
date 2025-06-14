@@ -7,6 +7,13 @@ macro_rules! unwrap_variant {
         }
     };
 
+    ($expr:expr, $variant:path, 3) => {
+        match $expr {
+            $variant(x,y,z) => (x,y,z),
+            _ => unwrap_variant!(@ UNEXPECTED_KIND $expr, $variant)
+        }
+    };
+
     ($expr:expr, $variant:path, ()) => {
         match $expr {
             $variant => (),

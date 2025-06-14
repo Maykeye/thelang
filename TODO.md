@@ -1,7 +1,12 @@
 # Compiler Roadmap
 
 ## Immediate
-* Refactor AST errors to Enum
+* Refactor Errors to Enum
+ * [x] AST
+ * [ ] CST
+ * [ ] IR
+ * [ ] NASM64
+  
 * Add booleans type
 * Add arguments
   * [x] added arguments tests
