@@ -443,7 +443,7 @@ impl AST {
                     .get(name)
                     .expect("internal error: known variable has no known type");
                 let type_id = match &var_data.type_id {
-                    Some(tp) => tp.clone(),
+                    Some(tp) => *tp,
                     None => {
                         errors.push(AstError::UndeclaredVariableType(
                             AstErrorContext {
@@ -542,7 +542,7 @@ impl AST {
                     }
 
                     // Return
-                    code_block.return_type_id = expr.type_id.clone();
+                    code_block.return_type_id = expr.type_id;
                     let expr = Expr::new(
                         ExprKind::Return(Some(Box::new(expr))),
                         pos,
@@ -554,7 +554,7 @@ impl AST {
                 cst::NodeKind::CodeBlock(cst_nested_cb) => {
                     let new_cb = Self::parse_code_block(cst_nested_cb, vars, errors)?;
                     let block_type = new_cb.exprs.last().map_or(AstTypeId::UNIT, |t| {
-                        t.type_id.as_ref().expect("Internal error").clone()
+                        *t.type_id.as_ref().expect("Internal error")
                     });
 
                     let abort = match (&code_block.return_type_id, &new_cb.return_type_id) {
@@ -568,7 +568,7 @@ impl AST {
                             },
                         ),
                         (None, Some(new_type)) => {
-                            code_block.return_type_id = Some(new_type.clone());
+                            code_block.return_type_id = Some(*new_type);
                             false
                         }
                         _ => false,
@@ -623,7 +623,7 @@ impl AST {
                     name.clone(),
                     Variable {
                         name,
-                        type_id: Some(arg.type_id.clone()),
+                        type_id: Some(arg.type_id),
                         is_arg: true,
                     },
                 );
@@ -644,7 +644,7 @@ impl AST {
                 let tp = match code_block.exprs.last() {
                     Some(e) => {
                         let t = match e.type_id.as_ref() {
-                            Some(t) => t.clone(),
+                            Some(t) => *t,
                             None => {
                                 let msg =  code_block.pos.report( "internal error: code block last expression type is not resolved");
                                 panic!("{}", msg)
