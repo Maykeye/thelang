@@ -369,19 +369,26 @@ impl IR {
 
     /// Parse AST type.
     /// Identical types will be merged
-    fn parse_type(&mut self, ast_type: &ast::Type) -> IRTypeId {
+    fn parse_type(&mut self, ast_type: &ast::AstType) -> IRTypeId {
         match ast_type {
-            ast::Type::Unit => IRTypeId::UNIT,
-            ast::Type::Never => IRTypeId::NEVER,
+            ast::AstType::Unit => IRTypeId::UNIT,
+            ast::AstType::Never => IRTypeId::NEVER,
             _ => unimplemented!("unimplemented type parsing for {ast_type:?}"),
         }
     }
 
-    fn parse_ast_func(&mut self, ast_func: &ast::Function) -> Result<IRFunction, String> {
+    fn parse_ast_func(
+        &mut self,
+        ast: &AST,
+        ast_func: &ast::Function,
+    ) -> Result<IRFunction, String> {
         let mut fun = IRFunction::new(&ast_func.name, ast_func.decl_pos);
 
-        for arg in ast_func.r#type.args.iter() {
-            let type_id = self.parse_type(&arg.r#type);
+        for arg in ast_func.type_id.args.iter() {
+            let type_id = self.parse_type(
+                ast.get_type(arg.type_id)
+                    .expect("internal error: argument type id doesn't exist in types"),
+            );
             // TODO: give register an argument flag, not just put in args
             let arg_reg = fun.new_reg(type_id, Some(arg.name.clone()));
             fun.args.push(arg_reg);
@@ -412,7 +419,7 @@ impl IR {
         let mut errs = vec![];
 
         for func in ast.functions.values() {
-            match ir.parse_ast_func(func) {
+            match ir.parse_ast_func(ast, func) {
                 Ok(ir_fun) => {
                     ir.functions.insert(ir_fun.name.clone(), ir_fun);
                 }

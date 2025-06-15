@@ -1,6 +1,7 @@
 # Compiler Roadmap
 
 ## Immediate
+* Implement AstTypeId properly
 * Refactor Errors to Enum
  * [x] AST
  * [X] CST

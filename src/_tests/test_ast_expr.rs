@@ -1,5 +1,5 @@
 use crate::AST;
-use crate::ast::{AstErrorContextKind, ExprKind};
+use crate::ast::{AstErrorContextKind, AstTypeId, ExprKind};
 use crate::tokens::{Pos, TokenKind};
 use crate::unwrap_variant;
 use crate::{cst::CST, lexer::tokenize};
@@ -33,8 +33,8 @@ fn test_invert_is_not_unit_type() {
     let (ctx, from, to) = unwrap_variant!(&err[0], AstError::TypeConversion, 3);
     assert_eq!(ctx.error_pos, Pos::new(2, 1));
     assert_eq!(ctx.kind, AstErrorContextKind::FunctionReturn);
-    assert_eq!(from.0, "bool");
-    assert_eq!(to.0, "()");
+    assert_eq!(from, &AstTypeId::BOOL);
+    assert_eq!(to, &AstTypeId::UNIT);
 }
 
 #[test]
@@ -49,6 +49,6 @@ fn test_invert_requires_bool() {
         ctx.kind,
         AstErrorContextKind::UnaryOp(TokenKind::Exclamation)
     );
-    assert_eq!(from.0, "()");
-    assert_eq!(to.0, "bool");
+    assert_eq!(from, &AstTypeId::UNIT);
+    assert_eq!(to, &AstTypeId::BOOL);
 }

@@ -1,5 +1,5 @@
 use crate::AST;
-use crate::ast::{ExprKind, Type};
+use crate::ast::{AstType, AstTypeId, ExprKind};
 use crate::tokens::Pos;
 use crate::{cst::CST, lexer::tokenize};
 use pretty_assertions::assert_eq;
@@ -20,7 +20,7 @@ fn make_empty_func_ast() -> AST {
 fn test_empty_func_decl() {
     let empty_func = &make_empty_func_ast().functions["empty_func"];
     assert_eq!(empty_func.name, "empty_func");
-    assert_eq!(empty_func.r#type.return_type, Type::Unit);
+    assert_eq!(empty_func.type_id.return_type, AstTypeId::UNIT);
     assert!(empty_func.get_args().is_empty());
 }
 
@@ -35,9 +35,13 @@ fn test_empty_func_decl_pos() {
 
 #[test]
 fn test_empty_func_definition() {
-    let empty_func = &make_empty_func_ast().functions["empty_func"];
+    let ast = make_empty_func_ast();
+    let empty_func = &ast.functions["empty_func"];
     let body = empty_func.body.as_ref().unwrap();
-    assert_eq!(body.return_type, Some(Type::Unit));
+    assert_eq!(
+        ast.get_type(body.return_type_id.unwrap()).unwrap(),
+        &AstType::Unit
+    );
     assert_eq!(body.exprs.len(), 1);
     let ret_expr = match &body.exprs[0].kind {
         ExprKind::Return(ret_val) => ret_val.as_ref(),
@@ -51,7 +55,10 @@ fn test_empty_func_definition() {
 fn impl_nesting_return_type(txt: &str) {
     let ast = ast_from_text(txt).unwrap();
     let body = ast.functions.get("nesting").unwrap().body.as_ref().unwrap();
-    assert_eq!(body.return_type, Some(Type::Unit));
+    assert_eq!(
+        ast.get_type(body.return_type_id.unwrap()).unwrap(),
+        &AstType::Unit
+    );
 }
 #[test]
 fn test_nesting_return_type() {
@@ -200,14 +207,17 @@ fn test_return_arg() {
 fn test_function_argument_type() {
     let ast = ast_from_text("fn tst(x: bool){}").unwrap();
     let func = ast.functions.get("tst").unwrap();
-    assert_eq!(func.r#type.args.len(), 1);
-    let arg = &func.r#type.args[0];
-    assert_eq!(arg.r#type, Type::Bool);
+    assert_eq!(func.type_id.args.len(), 1);
+    let arg = &func.type_id.args[0];
+    assert_eq!(ast.get_type(arg.type_id).unwrap(), &AstType::Bool);
 }
 
 #[test]
 fn test_return_type_ok() {
     let ast = ast_from_text("fn truth()->bool{true}").unwrap();
     let func = ast.functions.get("truth").unwrap();
-    assert_eq!(func.r#type.return_type, Type::Bool);
+    assert_eq!(
+        ast.get_type(func.type_id.return_type).unwrap(),
+        &AstType::Bool
+    );
 }

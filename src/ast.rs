@@ -5,26 +5,31 @@ use crate::{
     tokens::{Pos, TokenKind},
 };
 
-// TODO: use integer id as in IR
-#[derive(Debug, PartialEq, Eq)]
-pub struct AstTypeId(String);
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct AstTypeId(pub usize);
+
+impl AstTypeId {
+    pub const NEVER: AstTypeId = AstTypeId(0);
+    pub const UNIT: AstTypeId = AstTypeId(1);
+    pub const BOOL: AstTypeId = AstTypeId(2);
+}
 
 // TODO: replace with Variable?
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TpFunctionArg {
     pub name: String,
-    pub r#type: Type,
+    pub type_id: AstTypeId,
     pub pos: Pos,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TpFunction {
     pub args: Vec<TpFunctionArg>,
-    pub return_type: Type,
+    pub return_type: AstTypeId,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Type {
+pub enum AstType {
     Function(Box<TpFunction>),
     /// `!` is a so called never type, which has no instances
     Never,
@@ -37,15 +42,15 @@ pub enum Type {
 #[derive(Debug)]
 pub struct Variable {
     pub name: String,
-    pub r#type: Option<Type>,
+    pub type_id: Option<AstTypeId>,
     pub is_arg: bool,
 }
 
 impl Variable {
-    pub fn new<N: Into<String>>(name: N, r#type: Option<Type>, is_arg: bool) -> Self {
+    pub fn new<N: Into<String>>(name: N, type_id: Option<AstTypeId>, is_arg: bool) -> Self {
         Self {
             name: name.into(),
-            r#type,
+            type_id,
             is_arg,
         }
     }
@@ -65,11 +70,11 @@ pub enum ExprKind {
 pub struct Expr {
     pub kind: ExprKind,
     pub pos: Pos,
-    pub r#type: Option<Type>,
+    pub type_id: Option<AstTypeId>,
 }
 impl Expr {
-    pub fn new(kind: ExprKind, pos: Pos, r#type: Option<Type>) -> Self {
-        Self { kind, pos, r#type }
+    pub fn new(kind: ExprKind, pos: Pos, type_id: Option<AstTypeId>) -> Self {
+        Self { kind, pos, type_id }
     }
 }
 
@@ -82,7 +87,7 @@ pub struct CodeBlock {
     /// Return type of the block: if block is interrupted by return <expr>, <expr> type is stored
     /// there. If no interruption found, type is none.
     /// This is to allow differentiate between `10 + {3}` and `10 + {return 3}`
-    pub return_type: Option<Type>,
+    pub return_type_id: Option<AstTypeId>,
 }
 
 impl CodeBlock {
@@ -90,7 +95,7 @@ impl CodeBlock {
         Self {
             exprs: Default::default(),
             pos,
-            return_type: None,
+            return_type_id: None,
         }
     }
 
@@ -103,25 +108,19 @@ impl CodeBlock {
 pub struct Function {
     pub decl_pos: Pos,
     pub name: String,
-    pub r#type: TpFunction,
+    pub type_id: TpFunction,
     pub body: Option<CodeBlock>,
 }
 
 impl Function {
     fn get_args(&self) -> &[TpFunctionArg] {
-        &self.r#type.args
+        &self.type_id.args
     }
 
     pub fn get_argument_index_by_name(&self, name: &str) -> Option<usize> {
         // TODO: refactor codegen to use index instead of name
-        self.r#type.args.iter().position(|arg| arg.name == name)
+        self.type_id.args.iter().position(|arg| arg.name == name)
     }
-}
-
-#[derive(Debug)]
-#[allow(clippy::upper_case_acronyms)]
-pub struct AST {
-    pub functions: HashMap<String, Function>,
 }
 
 #[derive(Debug)]
@@ -178,6 +177,20 @@ impl ScopeTracker {
     }
     fn pop_scope(&mut self) {
         self.scopes.pop();
+    }
+}
+
+struct ScopedVariablesData {
+    scopes: ScopeTracker,
+    data: HashMap<String, Variable>,
+}
+
+impl ScopedVariablesData {
+    pub fn new() -> Self {
+        Self {
+            scopes: ScopeTracker::new(),
+            data: HashMap::new(),
+        }
     }
 }
 
@@ -247,32 +260,33 @@ impl AstError {
     }
 }
 
-struct ScopedVariablesData {
-    scopes: ScopeTracker,
-    data: HashMap<String, Variable>,
+#[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
+pub struct AST {
+    pub functions: HashMap<String, Function>,
+    pub types: HashMap<AstTypeId, AstType>,
 }
-
-impl ScopedVariablesData {
-    pub fn new() -> Self {
-        Self {
-            scopes: ScopeTracker::new(),
-            data: HashMap::new(),
-        }
-    }
-}
-
 impl AST {
     pub fn new() -> Self {
+        let mut types = HashMap::new();
+        types.insert(AstTypeId::NEVER, AstType::Never);
+        types.insert(AstTypeId::UNIT, AstType::Unit);
+        types.insert(AstTypeId::BOOL, AstType::Bool);
         Self {
             functions: Default::default(),
+            types,
         }
     }
 
-    fn parse_type(&mut self, cst: &Node, _errors: &mut Vec<AstError>) -> Result<Type, ()> {
+    pub fn get_type(&self, type_id: AstTypeId) -> Option<&AstType> {
+        self.types.get(&type_id)
+    }
+
+    fn parse_type(&mut self, cst: &Node, _errors: &mut Vec<AstError>) -> Result<AstTypeId, ()> {
         match &cst.kind {
-            cst::NodeKind::Unit => Ok(Type::Unit),
+            cst::NodeKind::Unit => Ok(AstTypeId::UNIT),
             cst::NodeKind::Identifier(named_type) => match named_type.as_str() {
-                "bool" => Ok(Type::Bool),
+                "bool" => Ok(AstTypeId::BOOL),
                 _ => unimplemented!(),
             },
             _ => {
@@ -305,14 +319,14 @@ impl AST {
             }
 
             // Get type
-            let r#type = self
+            let type_id = self
                 .parse_type(&cst_arg.r#type, errors)
-                .unwrap_or(Type::Unit);
+                .unwrap_or(AstTypeId::UNIT);
 
             // And finally put it into function arguments
             args_tp.push(TpFunctionArg {
                 name,
-                r#type,
+                type_id,
                 pos: cst_arg.pos,
             });
         }
@@ -341,8 +355,8 @@ impl AST {
             let args_tp = self.parse_cst_function_declarations_args(cst_func, errors);
             // Parse return type
             let func_ret_type = match &cst_func.return_type {
-                Some(node) => self.parse_type(node, errors).unwrap_or(Type::Unit),
-                None => Type::Unit,
+                Some(node) => self.parse_type(node, errors).unwrap_or(AstTypeId::UNIT),
+                None => AstTypeId::UNIT,
             };
 
             // Assign function type to the global symbol
@@ -353,7 +367,7 @@ impl AST {
             let func = Function {
                 decl_pos: cst_func.pos,
                 name: full_name.clone(),
-                r#type: tp_func,
+                type_id: tp_func,
                 body: None,
             };
 
@@ -364,21 +378,38 @@ impl AST {
     }
 
     fn check_type_implicit_conversion(
-        from: &Type,
-        to: &Type,
+        from: AstTypeId,
+        to: AstTypeId,
         errors: &mut Vec<AstError>,
         get_ctx: impl Fn() -> AstErrorContext,
     ) -> bool {
-        if *from == *to {
+        if from == to {
             true
         } else {
-            errors.push(AstError::TypeConversion(
-                get_ctx(),
-                AstTypeId(format!("{:?}", from)),
-                AstTypeId(format!("{:?}", to)),
-            ));
-
+            errors.push(AstError::TypeConversion(get_ctx(), from, to));
             false
+        }
+    }
+
+    /// Parse `true` or `false`
+    // TODO: move to cst to not store dozens of strings true/false?
+    fn parse_expr_boolean_literal(cst_expr: &cst::Node) -> Option<Expr> {
+        if let cst::NodeKind::Identifier(id) = &cst_expr.kind {
+            let bool_value = match id.as_str() {
+                "true" => Some(true),
+                "false" => Some(false),
+                _ => None,
+            };
+
+            bool_value.map(|b| {
+                Expr::new(
+                    ExprKind::BooleanLiteral(b),
+                    cst_expr.pos,
+                    Some(AstTypeId::BOOL),
+                )
+            })
+        } else {
+            None
         }
     }
 
@@ -387,25 +418,17 @@ impl AST {
         vars: &ScopedVariablesData,
         errors: &mut Vec<AstError>,
     ) -> Result<Expr, ()> {
+        // check builtin names
+        if let Some(expr) = Self::parse_expr_boolean_literal(cst_expr) {
+            return Ok(expr);
+        }
         match &cst_expr.kind {
-            cst::NodeKind::Unit => Ok(Expr::new(ExprKind::Unit, cst_expr.pos, Some(Type::Unit))),
+            cst::NodeKind::Unit => Ok(Expr::new(
+                ExprKind::Unit,
+                cst_expr.pos,
+                Some(AstTypeId::UNIT),
+            )),
             cst::NodeKind::Identifier(name) => {
-                // check builtin names
-                if name == "true" {
-                    return Ok(Expr::new(
-                        ExprKind::BooleanLiteral(true),
-                        cst_expr.pos,
-                        Some(Type::Bool),
-                    ));
-                }
-                if name == "false" {
-                    return Ok(Expr::new(
-                        ExprKind::BooleanLiteral(false),
-                        cst_expr.pos,
-                        Some(Type::Bool),
-                    ));
-                }
-
                 // resolve by scope
                 let name = match vars.scopes.resolve_var(name) {
                     Some(name) => name,
@@ -419,7 +442,7 @@ impl AST {
                     .data
                     .get(name)
                     .expect("internal error: known variable has no known type");
-                let r#type = match &var_data.r#type {
+                let type_id = match &var_data.type_id {
                     Some(tp) => tp.clone(),
                     None => {
                         errors.push(AstError::UndeclaredVariableType(
@@ -439,25 +462,24 @@ impl AST {
                     ExprKind::Argument(name.clone())
                 };
 
-                Ok(Expr::new(kind, cst_expr.pos, Some(r#type)))
+                Ok(Expr::new(kind, cst_expr.pos, Some(type_id)))
             }
 
             cst::NodeKind::Invert(inner) => {
                 let inner = Self::parse_expr(inner, vars, errors)?;
-                if inner.r#type != Some(Type::Bool) {
+                if inner.type_id != Some(AstTypeId::BOOL) {
                     errors.push(AstError::TypeConversion(
                         AstErrorContext {
                             error_pos: cst_expr.pos,
                             kind: AstErrorContextKind::UnaryOp(TokenKind::Exclamation),
                         },
-                        AstTypeId(format!("{:?}", inner.r#type)),
-                        AstTypeId("bool".to_string()),
+                        inner.type_id.unwrap_or(AstTypeId::NEVER),
+                        AstTypeId::BOOL,
                     ));
                     return Err(());
                 }
                 let kind = ExprKind::Invert(Box::new(inner));
-                // TODO: check for inner.type == bool
-                Ok(Expr::new(kind, cst_expr.pos, Some(Type::Bool)))
+                Ok(Expr::new(kind, cst_expr.pos, Some(AstTypeId::BOOL)))
             }
             _ => unimplemented!("nyi"),
         }
@@ -483,9 +505,9 @@ impl AST {
         let mut code_block = CodeBlock::new(pos);
         // Empty body = return ()
         if cst_cb.nodes.is_empty() {
-            let r#return = Expr::new(ExprKind::Return(None), pos, Some(Type::Never));
+            let r#return = Expr::new(ExprKind::Return(None), pos, Some(AstTypeId::NEVER));
             code_block.exprs.push(r#return);
-            code_block.return_type = Some(Type::Unit);
+            code_block.return_type_id = Some(AstTypeId::UNIT);
             return Some(code_block);
         }
 
@@ -501,16 +523,16 @@ impl AST {
 
                     // If it's the second return type, make sure they are convertible
                     assert!(
-                        expr.r#type.is_some(),
+                        expr.type_id.is_some(),
                         "{}",
                         cst_node.pos.report("unknown type")
                     );
-                    if let Some(current_return_type) = code_block.return_type {
-                        let new_type = expr.r#type.as_ref().unwrap();
+                    if let Some(current_return_type) = code_block.return_type_id {
+                        let new_type = expr.type_id.as_ref().unwrap();
                         // TODO: return or panic of expt type not yet defined?
                         Self::check_type_implicit_conversion(
-                            new_type,
-                            &current_return_type,
+                            *new_type,
+                            current_return_type,
                             errors,
                             || AstErrorContext {
                                 error_pos: cst_node.pos,
@@ -520,25 +542,25 @@ impl AST {
                     }
 
                     // Return
-                    code_block.return_type = expr.r#type.clone();
+                    code_block.return_type_id = expr.type_id.clone();
                     let expr = Expr::new(
                         ExprKind::Return(Some(Box::new(expr))),
                         pos,
-                        Some(Type::Never),
+                        Some(AstTypeId::NEVER),
                     );
                     code_block.exprs.push(expr);
                 }
 
                 cst::NodeKind::CodeBlock(cst_nested_cb) => {
                     let new_cb = Self::parse_code_block(cst_nested_cb, vars, errors)?;
-                    let block_type = new_cb.exprs.last().map_or(Type::Unit, |t| {
-                        t.r#type.as_ref().expect("Internal error").clone()
+                    let block_type = new_cb.exprs.last().map_or(AstTypeId::UNIT, |t| {
+                        t.type_id.as_ref().expect("Internal error").clone()
                     });
 
-                    let abort = match (&code_block.return_type, &new_cb.return_type) {
+                    let abort = match (&code_block.return_type_id, &new_cb.return_type_id) {
                         (Some(old_type), Some(new_type)) => !Self::check_type_implicit_conversion(
-                            new_type,
-                            old_type,
+                            *new_type,
+                            *old_type,
                             errors,
                             || AstErrorContext {
                                 error_pos: cst_nested_cb.pos,
@@ -546,7 +568,7 @@ impl AST {
                             },
                         ),
                         (None, Some(new_type)) => {
-                            code_block.return_type = Some(new_type.clone());
+                            code_block.return_type_id = Some(new_type.clone());
                             false
                         }
                         _ => false,
@@ -601,7 +623,7 @@ impl AST {
                     name.clone(),
                     Variable {
                         name,
-                        r#type: Some(arg.r#type.clone()),
+                        type_id: Some(arg.type_id.clone()),
                         is_arg: true,
                     },
                 );
@@ -618,10 +640,10 @@ impl AST {
             // If function body has no explicit return, then take the last-known-expression type.
             // At this point expression types must be all resolved
             // Default type is unit, of course
-            if code_block.return_type.is_none() {
+            if code_block.return_type_id.is_none() {
                 let tp = match code_block.exprs.last() {
                     Some(e) => {
-                        let t = match e.r#type.as_ref() {
+                        let t = match e.type_id.as_ref() {
                             Some(t) => t.clone(),
                             None => {
                                 let msg =  code_block.pos.report( "internal error: code block last expression type is not resolved");
@@ -630,22 +652,22 @@ impl AST {
                         };
                         t
                     }
-                    None => Type::Unit,
+                    None => AstTypeId::UNIT,
                 };
-                code_block.return_type = Some(tp);
+                code_block.return_type_id = Some(tp);
             }
 
             // At this point all expresions must be parsed
             // We need to make sure return type can be converted to the function return type
-            match code_block.return_type.as_ref() {
+            match code_block.return_type_id.as_ref() {
                 None => {
                     panic!("internal error: no type for function body found");
                 }
 
-                Some(r#type) => {
+                Some(type_id) => {
                     Self::check_type_implicit_conversion(
-                        r#type,
-                        &func.r#type.return_type,
+                        *type_id,
+                        func.type_id.return_type,
                         errors,
                         || AstErrorContext {
                             error_pos: code_block.last_expr_pos(),
