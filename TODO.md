@@ -18,12 +18,12 @@
   * [x] add IROp for loading args
   * [x] add IR type for arg
   * [x] add IR regs names
-  * [ ] stub in nasm64
+  * [x] stub in nasm64
+  * [ ] bool in nasm64
 * Write IR Types into output(?)
 * Add (virtual) register allocation, scope = function(done). 
-   * [ ] combine kinds of registers: one operational SSA + one local mem for loading/storing.
+   * [ ] combine kinds of registers: one operational SSA + one local mem for loading/storing + hardware (for rax, rbx, etc)
 * Add registers mappings
-* Use enum error for error instead of string
 * Merge cst/error_recovery_find_next_block_end/error_recovery_find_current_block_end/error_recovery_find_expr_end
 
 

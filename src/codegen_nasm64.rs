@@ -219,8 +219,18 @@ impl CodeGenNasm64 {
                 IROp::LdConstBool { value, dest } => {
                     unimplemented!();
                 }
-                IROp::LoadArg { arg: _, dest: _ } => {
-                    unimplemented!();
+                IROp::LoadArg {
+                    arg: arg_reg,
+                    dest: value_reg,
+                } => {
+                    let reg_data = ir_func.get_reg_data(*value_reg);
+                    // Unit type has no need for actual register or variable on stack
+                    if reg_data.r#type == IRTypeId::UNIT {
+                        self.code
+                            .comment(&format!("{} = ()", ir_func.format_reg_name(*value_reg)));
+                    } else {
+                        unimplemented!();
+                    }
                 }
 
                 IROp::Invert { value, dest } => {
