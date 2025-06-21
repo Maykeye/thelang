@@ -38,15 +38,26 @@ pub struct IRRegData {
     pub id: IRRegId,
     pub name: Option<String>,
     pub r#type: IRTypeId,
+    pub argument_index: Option<usize>,
 }
 
 impl IRRegData {
-    pub fn new(id: IRRegId, name: Option<String>, r#type: IRTypeId) -> Self {
-        Self { id, name, r#type }
+    pub fn new(
+        id: IRRegId,
+        name: Option<String>,
+        r#type: IRTypeId,
+        argument_index: Option<usize>,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            r#type,
+            argument_index,
+        }
     }
 
     pub fn new_unit() -> IRRegData {
-        Self::new(IRRegId::UNIT, Some("()".to_string()), IRTypeId::UNIT)
+        Self::new(IRRegId::UNIT, Some("()".to_string()), IRTypeId::UNIT, None)
     }
 }
 
@@ -130,9 +141,21 @@ impl IRFunction {
         }
     }
 
+    fn new_arg(
+        &mut self,
+        type_id: IRTypeId,
+        name: Option<String>,
+        argument_index: usize,
+    ) -> IRRegId {
+        let reg_id = IRRegId(self.regs.len());
+        self.regs
+            .push(IRRegData::new(reg_id, name, type_id, Some(argument_index)));
+        reg_id
+    }
+
     fn new_reg(&mut self, type_id: IRTypeId, name: Option<String>) -> IRRegId {
         let reg_id = IRRegId(self.regs.len());
-        self.regs.push(IRRegData::new(reg_id, name, type_id));
+        self.regs.push(IRRegData::new(reg_id, name, type_id, None));
         reg_id
     }
 
@@ -403,13 +426,13 @@ impl IR {
     ) -> Result<IRFunction, String> {
         let mut fun = IRFunction::new(&ast_func.name, ast_func.decl_pos);
 
-        for arg in ast_func.type_id.args.iter() {
+        for (arg_idx, arg) in ast_func.type_id.args.iter().enumerate() {
             let type_id = self.parse_type(
                 ast.get_type(arg.type_id)
                     .expect("internal error: argument type id doesn't exist in types"),
             );
             // TODO: give register an argument flag, not just put in args
-            let arg_reg = fun.new_reg(type_id, Some(arg.name.clone()));
+            let arg_reg = fun.new_arg(type_id, Some(arg.name.clone()), arg_idx);
             fun.args.push(arg_reg);
         }
 

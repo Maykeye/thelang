@@ -27,6 +27,17 @@ fn test_ir() {
 }
 
 #[test]
+fn test_arg_indices() {
+    let source = " fn main(a0: (), a1:(), a2:()) {} ";
+    let ir = IR::from_thelan(source).unwrap();
+    let func = ir.functions.get("main").unwrap();
+    assert_eq!(func.args.len(), 3);
+    assert_eq!(func.get_reg_data(func.args[0]).argument_index, Some(0));
+    assert_eq!(func.get_reg_data(func.args[1]).argument_index, Some(1));
+    assert_eq!(func.get_reg_data(func.args[2]).argument_index, Some(2));
+}
+
+#[test]
 fn test_arg_types() {
     let source = " fn main(none: ()) {} ";
     let ir = IR::from_thelan(source).unwrap();
