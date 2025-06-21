@@ -114,7 +114,7 @@ pub struct IRFunction {
     pub blocks: Vec<IRCodeBlock>,
     pub args: Vec<IRReg>,
     pub regs: Vec<IRRegData>,
-    pub types: Vec<IRType>,
+    pub types: Vec<IRType>, // TODO: move to IR ?
 }
 
 impl IRFunction {
@@ -179,6 +179,15 @@ impl IRFunction {
             None => format!("$r{}", reg.0),
         }
     }
+
+    pub fn format_reg_type(&self, reg: IRReg) -> String {
+        let data = self.get_reg_data(reg);
+        if let Some(type_info) = self.types.get(data.r#type.0) {
+            format!("{}", type_info.name)
+        } else {
+            format!("<internal-error-unknown-type: {:?}>", data.r#type)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -199,6 +208,13 @@ impl IR {
             s.push_str("FUNC ");
             s.push_str(&func.name);
             s.push('\n');
+            for arg in func.args.iter() {
+                s.push_str(&format!(
+                    "    arg {}; type {}\n",
+                    func.format_reg_name(*arg),
+                    func.format_reg_type(*arg)
+                ));
+            }
             // TODO: print args
 
             for blk in func.blocks.iter() {
