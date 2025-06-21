@@ -1,6 +1,6 @@
 use crate::{
     IR,
-    ir::{IRCodeBlockId, IROp, IRReg, IRTypeId},
+    ir::{IRCodeBlockId, IROp, IRRegId, IRTypeId},
 };
 
 #[test]
@@ -20,7 +20,7 @@ fn test_ir() {
     assert_eq!(blk.id, IRCodeBlockId(0));
     assert_eq!(blk.ops.len(), 1);
     if let &IROp::Return { value: r } = &blk.ops[0] {
-        assert_eq!(r, IRReg(0));
+        assert_eq!(r, IRRegId(0));
     } else {
         panic!("ret expected");
     }
@@ -33,7 +33,7 @@ fn test_arg_types() {
     let func = ir.functions.get("main").unwrap();
     assert_eq!(func.args.len(), 1);
     assert_eq!(func.get_reg_data(func.args[0]).r#type, IRTypeId::UNIT);
-    assert!(func.args[0].0 >= IRReg::BUILTIN_REGS_COUNT);
+    assert!(func.args[0].0 >= IRRegId::BUILTIN_REGS_COUNT);
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn test_return_r0() {
             IROp::Return { value } => {
                 assert_eq!(
                     *value,
-                    IRReg::UNIT,
+                    IRRegId::UNIT,
                     "context should be discarded in favor of builtin unit register R0"
                 )
             }

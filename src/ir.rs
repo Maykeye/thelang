@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IRReg(pub usize);
+pub struct IRRegId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IRTypeId(pub usize);
@@ -28,25 +28,25 @@ impl IRType {
     }
 }
 
-impl IRReg {
-    pub const UNIT: IRReg = IRReg(0);
+impl IRRegId {
+    pub const UNIT: IRRegId = IRRegId(0);
     pub const BUILTIN_REGS_COUNT: usize = 1;
 }
 
 #[derive(Debug)]
 pub struct IRRegData {
-    pub id: IRReg,
+    pub id: IRRegId,
     pub name: Option<String>,
     pub r#type: IRTypeId,
 }
 
 impl IRRegData {
-    pub fn new(id: IRReg, name: Option<String>, r#type: IRTypeId) -> Self {
+    pub fn new(id: IRRegId, name: Option<String>, r#type: IRTypeId) -> Self {
         Self { id, name, r#type }
     }
 
     pub fn new_unit() -> IRRegData {
-        Self::new(IRReg::UNIT, Some("()".to_string()), IRTypeId::UNIT)
+        Self::new(IRRegId::UNIT, Some("()".to_string()), IRTypeId::UNIT)
     }
 }
 
@@ -65,28 +65,28 @@ pub enum IROp {
     /// after the call is complete, PC is set to the next instruction after the call
     LocalCall {
         block_id: IRCodeBlockId,
-        dest: IRReg,
+        dest: IRRegId,
     },
     /// Return a register from the function
     Return {
-        value: IRReg,
+        value: IRRegId,
     },
 
     /// Invert boolean value
     Invert {
-        value: IRReg,
-        dest: IRReg,
+        value: IRRegId,
+        dest: IRRegId,
     },
 
     /// Load argument
     LoadArg {
-        arg: IRReg,
-        dest: IRReg,
+        arg: IRRegId,
+        dest: IRRegId,
     },
 
     LdConstBool {
         value: bool,
-        dest: IRReg,
+        dest: IRRegId,
     },
 }
 
@@ -112,7 +112,7 @@ pub struct IRFunction {
     pub pos: Pos,
     pub name: String,
     pub blocks: Vec<IRCodeBlock>,
-    pub args: Vec<IRReg>,
+    pub args: Vec<IRRegId>,
     pub regs: Vec<IRRegData>,
     pub types: Vec<IRType>, // TODO: move to IR ?
 }
@@ -130,8 +130,8 @@ impl IRFunction {
         }
     }
 
-    fn new_reg(&mut self, type_id: IRTypeId, name: Option<String>) -> IRReg {
-        let reg_id = IRReg(self.regs.len());
+    fn new_reg(&mut self, type_id: IRTypeId, name: Option<String>) -> IRRegId {
+        let reg_id = IRRegId(self.regs.len());
         self.regs.push(IRRegData::new(reg_id, name, type_id));
         reg_id
     }
@@ -164,14 +164,14 @@ impl IRFunction {
         id
     }
 
-    pub fn get_reg_data(&self, reg: IRReg) -> &IRRegData {
+    pub fn get_reg_data(&self, reg: IRRegId) -> &IRRegData {
         &self.regs[reg.0]
     }
     pub fn get_block_type(&self, block: IRCodeBlockId) -> IRTypeId {
         self.blocks[block.0].type_id
     }
 
-    pub fn format_reg_name(&self, reg: IRReg) -> String {
+    pub fn format_reg_name(&self, reg: IRRegId) -> String {
         let data = self.get_reg_data(reg);
         // TODO: different prefix for different registers
         match &data.name {
@@ -180,7 +180,7 @@ impl IRFunction {
         }
     }
 
-    pub fn format_reg_type(&self, reg: IRReg) -> String {
+    pub fn format_reg_type(&self, reg: IRRegId) -> String {
         let data = self.get_reg_data(reg);
         if let Some(type_info) = self.types.get(data.r#type.0) {
             format!("{}", type_info.name)
@@ -266,9 +266,9 @@ impl IR {
         ir_fun: &mut IRFunction,
         ir_block: &mut IRCodeBlock,
         ast_func: &ast::Function,
-    ) -> IRReg {
+    ) -> IRRegId {
         match &ast_expr.kind {
-            ast::ExprKind::Unit => IRReg::UNIT,
+            ast::ExprKind::Unit => IRRegId::UNIT,
             ast::ExprKind::Argument(name) => {
                 let ast_arg_idx = ast_func
                     .get_argument_index_by_name(name)
@@ -339,7 +339,9 @@ impl IR {
                             let expr_reg = self.parse_expr(expr, ir_fun, &mut block, ast_fn);
                             IROp::Return { value: expr_reg }
                         }
-                        None => IROp::Return { value: IRReg::UNIT },
+                        None => IROp::Return {
+                            value: IRRegId::UNIT,
+                        },
                     };
                     block.ops.push(ret);
                     block.type_id = IRTypeId::NEVER;
@@ -363,7 +365,7 @@ impl IR {
                     last_reg = Some(dest_reg);
                 }
                 ast::ExprKind::Unit => {
-                    last_reg = Some(IRReg::UNIT)
+                    last_reg = Some(IRRegId::UNIT)
                     // Unit() on top-expr(stmt) level is essentially nop.
                 }
                 ast::ExprKind::Invert(_) | ast::ExprKind::Argument(_) => {
@@ -374,7 +376,7 @@ impl IR {
         }
 
         if !has_branch {
-            let return_reg = last_reg.unwrap_or(IRReg::UNIT);
+            let return_reg = last_reg.unwrap_or(IRRegId::UNIT);
             let op = IROp::Return { value: return_reg };
             block.ops.push(op);
             block.type_id = ir_fun.get_reg_data(return_reg).r#type;
@@ -389,6 +391,7 @@ impl IR {
         match ast_type {
             ast::AstType::Unit => IRTypeId::UNIT,
             ast::AstType::Never => IRTypeId::NEVER,
+            ast::AstType::Bool => IRTypeId::BOOL,
             _ => unimplemented!("unimplemented type parsing for {ast_type:?}"),
         }
     }
