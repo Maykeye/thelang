@@ -1,6 +1,8 @@
 # Compiler Roadmap
 
 ## Immediate
+* Add booleans type
+ * [ ] focus on test_load_bool in codegen_nasm64
 * Implement AstTypeId properly
 * Refactor Errors to Enum
  * [x] AST
@@ -8,7 +10,6 @@
  * [ ] IR
  * [ ] NASM64
   
-* Add booleans type
 * Add arguments
   * [x] added arguments tests
   * [x] fix gram1

@@ -1,9 +1,9 @@
-use std::{fmt::Display, vec};
+use std::{collections::HashMap, fmt::Display, vec};
 
 use crate::{
     IR,
     codegen::CodeGen,
-    ir::{IRCodeBlockId, IRFunction, IROp, IRTypeId},
+    ir::{IRCodeBlockId, IRFunction, IROp, IRRegData, IRRegId, IRType, IRTypeId},
 };
 
 /// Target OS for nasm64, for now only one is supported
@@ -28,13 +28,51 @@ impl Default for CodeGenNasm64Config {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum OperandSize {
+    None,
+    Byte,
+}
+
+impl Display for OperandSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            OperandSize::None => write!(f, ""),
+            OperandSize::Byte => write!(f, "byte "),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct Offset(isize);
+impl Offset {
+    fn new(sz: isize) -> Self {
+        Self(sz)
+    }
+    fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl Display for Offset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:+}", self.0)
+    }
+}
+
 #[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, PartialEq, Eq)]
 enum Operand {
     RAX,
     RDI,
+    RSP,
+    RBP,
+    R15,
     U64(u64),
     Label(String),
     CodeBlock(IRCodeBlockId),
+    Sized(OperandSize, Box<Operand>),
+    Offset(Box<Operand>, Offset),
 }
 
 fn rax() -> Operand {
@@ -42,6 +80,15 @@ fn rax() -> Operand {
 }
 fn rdi() -> Operand {
     Operand::RDI
+}
+fn rsp() -> Operand {
+    Operand::RSP
+}
+fn rbp() -> Operand {
+    Operand::RBP
+}
+fn r15() -> Operand {
+    Operand::R15
 }
 fn label<S: Into<String>>(s: S) -> Operand {
     Operand::Label(s.into())
@@ -55,12 +102,24 @@ fn cb_id(id: IRCodeBlockId) -> Operand {
 
 impl Display for Operand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Operand::*;
+        use OperandSize::*;
         match self {
-            Operand::RAX => "rax".fmt(f),
-            Operand::RDI => "rdi".fmt(f),
-            Operand::U64(v) => write!(f, "qword {v}"),
-            Operand::Label(l) => l.fmt(f),
-            Operand::CodeBlock(block_id) => write!(f, ".b{}", block_id.0),
+            RAX => "rax".fmt(f),
+            RDI => "rdi".fmt(f),
+            RSP => "rsp".fmt(f),
+            RBP => "rbp".fmt(f),
+            R15 => "r15".fmt(f),
+            Offset(base_addr, delta) => write!(f, "[{base_addr}{delta}]"),
+            U64(v) => write!(f, "qword {v}"),
+            Label(l) => l.fmt(f),
+            CodeBlock(block_id) => write!(f, ".b{}", block_id.0),
+            Sized(Byte, reg) if reg.as_ref() == &RAX => "al".fmt(f),
+            Sized(Byte, reg) if reg.as_ref() == &R15 => "r15l".fmt(f),
+            Sized(Byte, offset) if matches!(offset.as_ref(), Operand::Offset(_, _)) => {
+                write!(f, "byte {}", offset)
+            }
+            Sized(tp, op) => panic!("Invalid sized operand {op}:{tp}"),
         }
     }
 }
@@ -117,12 +176,23 @@ impl Builder {
     fn syscall(&mut self) {
         self.indented("syscall");
     }
+    fn push(&mut self, operand: Operand) {
+        self.indented(format!("push {operand}"));
+    }
+    fn sub(&mut self, dst: Operand, rhs: Operand) {
+        self.indented(format!("sub {dst}, {rhs}"));
+    }
+    fn leave(&mut self) {
+        self.indented("leave");
+    }
 }
 
 pub struct CodeGenNasm64 {
     code: Builder,
     config: CodeGenNasm64Config,
 }
+
+type RegOffsets = HashMap<IRRegId, isize>;
 
 impl CodeGenNasm64 {
     pub fn new() -> Self {
@@ -189,7 +259,26 @@ impl CodeGenNasm64 {
         }
     }
 
-    fn write_code_block(&mut self, _ir: &IR, ir_func: &IRFunction, code_block_id: IRCodeBlockId) {
+    fn get_argument_operand(&self, reg_data: &IRRegData) -> Option<Operand> {
+        let idx = reg_data.argument_index?;
+        let is_primitive_arg = reg_data.r#type == IRTypeId::BOOL;
+        if is_primitive_arg {
+            match idx {
+                0 => Some(Operand::R15),
+                _ => unimplemented!(),
+            }
+        } else {
+            unimplemented!()
+        }
+    }
+
+    fn write_code_block(
+        &mut self,
+        _ir: &IR,
+        ir_func: &IRFunction,
+        code_block_id: IRCodeBlockId,
+        locals: &RegOffsets,
+    ) {
         let code_block = ir_func.blocks.get(code_block_id.0).unwrap_or_else(|| {
             panic!(
                 "internal error: invalid code block id {}:{}",
@@ -199,14 +288,29 @@ impl CodeGenNasm64 {
         self.code.cb_label(code_block_id);
         for op in &code_block.ops {
             match op {
-                IROp::Return { value: irreg } => {
+                IROp::Return {
+                    value: return_value_reg,
+                } => {
+                    // TODO: local ret
                     // TODO: once we'll implement virtual registers and mappings, we'll do
-                    // mov rax, [rel irreg.offset]
-                    let tp = ir_func.get_reg_data(*irreg).r#type;
-                    assert!(
-                        (tp == IRTypeId::UNIT) || (tp == IRTypeId::NEVER),
-                        "currently only () register is supported"
-                    );
+                    // mov rax, [rel irreg.offset] for globals
+
+                    let dat = ir_func.get_reg_data(*return_value_reg);
+                    if dat.r#type == IRTypeId::BOOL {
+                        assert!(dat.argument_index.is_none(), "returning arguments NYI");
+                        let retval_ofset = locals
+                            .get(&return_value_reg)
+                            .expect("Dest register not found in locals");
+                        let dst = Operand::Sized(OperandSize::Byte, Box::new(Operand::RAX));
+                        self.code
+                            .mov(dst, Operand::Offset(Box::new(rbp()), Offset(*retval_ofset)));
+                    } else {
+                        assert!(
+                            (dat.r#type == IRTypeId::UNIT) || (dat.r#type == IRTypeId::NEVER),
+                            "currently only bools, () and ! registers are supported"
+                        );
+                    }
+                    self.code.leave();
                     self.code.ret();
                 }
                 IROp::LocalCall {
@@ -223,13 +327,28 @@ impl CodeGenNasm64 {
                     arg: arg_reg,
                     dest: value_reg,
                 } => {
-                    let reg_data = ir_func.get_reg_data(*value_reg);
+                    let dst_reg_data = ir_func.get_reg_data(*value_reg);
                     // Unit type has no need for actual register or variable on stack
-                    if reg_data.r#type == IRTypeId::UNIT {
+                    if dst_reg_data.r#type == IRTypeId::UNIT {
                         self.code
                             .comment(&format!("{} = ()", ir_func.format_reg_name(*value_reg)));
                     } else {
-                        unimplemented!();
+                        let src_reg_data = ir_func.get_reg_data(*arg_reg);
+                        let src_arg_reg = self
+                            .get_argument_operand(src_reg_data)
+                            .expect("Argument operand expected");
+                        let dst_offset = locals
+                            .get(&dst_reg_data.id)
+                            .expect("Dest register not found in locals");
+
+                        let base_dst = Operand::Offset(Box::new(rbp()), Offset::new(*dst_offset));
+                        let dst = if dst_reg_data.r#type == IRTypeId::BOOL {
+                            Operand::Sized(OperandSize::Byte, Box::new(base_dst))
+                        } else {
+                            base_dst
+                        };
+
+                        self.code.mov(dst, src_arg_reg);
                     }
                 }
 
@@ -240,10 +359,42 @@ impl CodeGenNasm64 {
         }
     }
 
+    fn reg_type_size(&self, ir_func: &IRFunction, type_id: IRTypeId) -> usize {
+        match type_id {
+            IRTypeId::BOOL => 1,
+            IRTypeId::NEVER => 0,
+            IRTypeId::UNIT => 0,
+            _ => unimplemented!(),
+        }
+    }
+
     fn write_function_def(&mut self, ir: &IR, ir_func: &IRFunction) {
         self.code.label(&ir_func.name);
+
+        // We'll ignore red zones and do the old way
+        let mut local_reg_offsets = RegOffsets::new();
+        let mut current_offset: isize = 0;
+        for ir_reg in ir_func.regs.iter() {
+            // Skip arguments
+            if ir_reg.argument_index.is_some() {
+                continue;
+            }
+
+            // Skip units
+            let size = self.reg_type_size(ir_func, ir_reg.r#type) as isize;
+            if size == 0 {
+                continue;
+            }
+            current_offset -= size;
+            local_reg_offsets.insert(ir_reg.id, current_offset);
+        }
+        self.code.push(rbp());
+        self.code.mov(rbp(), rsp());
+        // TODO: align with 16 bytes sysv requirement
+        self.code.sub(rsp(), Operand::U64((-current_offset) as u64));
+
         for i in 0..ir_func.blocks.len() {
-            self.write_code_block(ir, ir_func, IRCodeBlockId(i));
+            self.write_code_block(ir, ir_func, IRCodeBlockId(i), &local_reg_offsets);
             self.code.nl();
         }
     }
