@@ -288,7 +288,10 @@ impl CodeGenNasm64 {
         self.code.cb_label(code_block_id);
         for op in &code_block.ops {
             match op {
-                IROp::Return {
+                IROp::LocalReturn {
+                    value: return_value_reg,
+                }
+                | IROp::Return {
                     value: return_value_reg,
                 } => {
                     // TODO: local ret
@@ -310,7 +313,11 @@ impl CodeGenNasm64 {
                             "currently only bools, () and ! registers are supported"
                         );
                     }
-                    self.code.leave();
+                    // Leave is done only when leaving the function and then we have to retore
+                    // rbp
+                    if matches!(op, &IROp::Return { .. }) {
+                        self.code.leave();
+                    }
                     self.code.ret();
                 }
                 IROp::LocalCall {

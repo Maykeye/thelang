@@ -78,6 +78,12 @@ pub enum IROp {
         block_id: IRCodeBlockId,
         dest: IRRegId,
     },
+
+    /// Return a register from the block inside the function. Function itself is not returned
+    LocalReturn {
+        value: IRRegId,
+    },
+
     /// Return a register from the function
     Return {
         value: IRRegId,
@@ -245,7 +251,10 @@ impl IR {
                 for op in blk.ops.iter() {
                     let ins = match op {
                         IROp::LocalCall { block_id, dest } => {
-                            format!("{} = call {}", func.format_reg_name(*dest), block_id)
+                            format!("{} = local.call {}", func.format_reg_name(*dest), block_id)
+                        }
+                        IROp::LocalReturn { value } => {
+                            format!("local.ret {}", func.format_reg_name(*value))
                         }
                         IROp::Return { value } => format!("ret {}", func.format_reg_name(*value)),
                         IROp::LoadArg { arg, dest } => format!(
@@ -335,6 +344,7 @@ impl IR {
         ir_fun: &mut IRFunction,
         ast_fn: &ast::Function,
         ast_code_block: &ast::CodeBlock,
+        is_top_block: bool,
     ) -> IRCodeBlockId {
         let mut block = ir_fun.prepare_block();
 
@@ -379,7 +389,7 @@ impl IR {
                     // It may have on AST level which inserts drops for affine types, but
                     // on IR level we just translate it into series of branches
 
-                    let blk = self.parse_code_block(ir_fun, ast_fn, nested_block);
+                    let blk = self.parse_code_block(ir_fun, ast_fn, nested_block, false);
                     let dest_reg = ir_fun.new_reg(ir_fun.get_block_type(blk), None);
                     block.ops.push(IROp::LocalCall {
                         block_id: blk,
@@ -400,7 +410,11 @@ impl IR {
 
         if !has_branch {
             let return_reg = last_reg.unwrap_or(IRRegId::UNIT);
-            let op = IROp::Return { value: return_reg };
+            let op = if is_top_block {
+                IROp::Return { value: return_reg }
+            } else {
+                IROp::LocalReturn { value: return_reg }
+            };
             block.ops.push(op);
             block.type_id = ir_fun.get_reg_data(return_reg).r#type;
         }
@@ -438,7 +452,7 @@ impl IR {
 
         match ast_func.body.as_ref() {
             Some(body) => {
-                self.parse_code_block(&mut fun, ast_func, body);
+                self.parse_code_block(&mut fun, ast_func, body, true);
             }
             None => unimplemented!("IR doesn't support extern functions"),
         }
