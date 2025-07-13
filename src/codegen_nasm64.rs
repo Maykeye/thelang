@@ -263,9 +263,15 @@ impl CodeGenNasm64 {
         let idx = reg_data.argument_index?;
         let is_primitive_arg = reg_data.r#type == IRTypeId::BOOL;
         if is_primitive_arg {
-            match idx {
+            let cpu_reg = match idx {
                 0 => Some(Operand::R15),
                 _ => unimplemented!(),
+            };
+            // TODO: propagate type for primitive types better
+            if reg_data.r#type == IRTypeId::BOOL {
+                cpu_reg.map(|r| Operand::Sized(OperandSize::Byte, Box::new(r)))
+            } else {
+                cpu_reg
             }
         } else {
             unimplemented!()

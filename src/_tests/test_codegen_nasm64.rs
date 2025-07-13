@@ -72,7 +72,7 @@ main:
     mov rbp, rsp
     sub rsp, qword 1
 .b0:
-    mov byte [rbp-1], r15b
+    mov byte [rbp-1], r15l
     mov al, [rbp-1]
     leave
     ret
