@@ -44,7 +44,7 @@ fn test_empty_func_definition() {
     );
     assert_eq!(body.exprs.len(), 1);
     let ret_expr = match &body.exprs[0].kind {
-        ExprKind::Return(ret_val) => ret_val.as_ref(),
+        ExprKind::BlockReturn(ret_val) => ret_val.as_ref(),
         _ => {
             panic!("expected Return, not {:?}", body.exprs[0].kind)
         }
