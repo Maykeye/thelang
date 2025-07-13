@@ -58,12 +58,21 @@ impl Variable {
 
 #[derive(Debug)]
 pub enum ExprKind {
+    /// Unit litreal: ()
     Unit,
-    Return(Option<Box<Expr>>),
-    Invert(Box<Expr>),
-    CodeBlock(CodeBlock),
-    Argument(String),
+    /// Boolean literal: true, false
     BooleanLiteral(bool),
+    /// Return from the function
+    Return(Option<Box<Expr>>),
+    /// Return from the code block
+    BlockReturn(Option<Box<Expr>>),
+    /// Boolean op: invert. ~x
+    Invert(Box<Expr>),
+    /// Code block
+    CodeBlock(CodeBlock),
+    /// Usage argument named ARGNAME
+    // TODO: replace string name to numeric id
+    Argument(String),
 }
 
 #[derive(Debug)]
@@ -505,7 +514,7 @@ impl AST {
         let mut code_block = CodeBlock::new(pos);
         // Empty body = return ()
         if cst_cb.nodes.is_empty() {
-            let r#return = Expr::new(ExprKind::Return(None), pos, Some(AstTypeId::NEVER));
+            let r#return = Expr::new(ExprKind::BlockReturn(None), pos, Some(AstTypeId::NEVER));
             code_block.exprs.push(r#return);
             code_block.return_type_id = Some(AstTypeId::UNIT);
             return Some(code_block);
@@ -544,7 +553,7 @@ impl AST {
                     // Return
                     code_block.return_type_id = expr.type_id;
                     let expr = Expr::new(
-                        ExprKind::Return(Some(Box::new(expr))),
+                        ExprKind::BlockReturn(Some(Box::new(expr))),
                         pos,
                         Some(AstTypeId::NEVER),
                     );

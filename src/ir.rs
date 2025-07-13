@@ -365,16 +365,16 @@ impl IR {
                     block.ops.push(op);
                     last_reg = Some(dest);
                 }
-                ast::ExprKind::Return(value) => {
+                ast::ExprKind::BlockReturn(value) | ast::ExprKind::Return(value) => {
                     /*Return an expression(or () if no expression is provided)*/
-                    let ret = match value.as_ref() {
-                        Some(expr) => {
-                            let expr_reg = self.parse_expr(expr, ir_fun, &mut block, ast_fn);
-                            IROp::Return { value: expr_reg }
-                        }
-                        None => IROp::Return {
-                            value: IRRegId::UNIT,
-                        },
+                    let value = match value.as_ref() {
+                        Some(expr) => self.parse_expr(expr, ir_fun, &mut block, ast_fn),
+                        None => IRRegId::UNIT,
+                    };
+                    let ret = if matches!(&x.kind, ast::ExprKind::BlockReturn(..)) {
+                        IROp::LocalReturn { value }
+                    } else {
+                        IROp::Return { value }
                     };
                     block.ops.push(ret);
                     block.type_id = IRTypeId::NEVER;

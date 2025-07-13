@@ -165,6 +165,7 @@ local.ret $r1
 
 .b2:
 local.ret $r0:<()>
+
 END FUNC main\n";
 
     assert_eq!(ir.to_text(), expected_ir);
