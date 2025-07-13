@@ -6,26 +6,17 @@ use crate::{
 use pretty_assertions::assert_eq;
 
 #[test]
-fn test_ir() {
-    //                        0         1         2         3          4
-    //                        012345678901234567890123456789001234567890112
+fn test_ir_meta() {
     let ir = IR::from_thelan("//example of an empty function\nfn main(){\n}");
     let ir = ir.unwrap();
-
+    let func = ir.functions.get("main").unwrap();
     assert_eq!(ir.functions.len(), 1);
-    let main = ir.functions.get("main").unwrap();
-    assert_eq!(main.pos.line, 2);
-    assert_eq!(main.pos.col, 1);
-    assert_eq!(main.name, "main");
-    assert_eq!(main.blocks.len(), 1);
-    let blk = &main.blocks[0];
+    assert_eq!(func.pos.line, 2);
+    assert_eq!(func.pos.col, 1);
+    assert_eq!(func.name, "main");
+    assert_eq!(func.blocks.len(), 1);
+    let blk = &func.blocks[0];
     assert_eq!(blk.id, IRCodeBlockId(0));
-    assert_eq!(blk.ops.len(), 1);
-    if let &IROp::Return { value: r } = &blk.ops[0] {
-        assert_eq!(r, IRRegId(0));
-    } else {
-        panic!("ret expected");
-    }
 }
 
 #[test]
@@ -47,6 +38,19 @@ fn test_arg_types() {
     assert_eq!(func.args.len(), 1);
     assert_eq!(func.get_reg_data(func.args[0]).r#type, IRTypeId::UNIT);
     assert!(func.args[0].0 >= IRRegId::BUILTIN_REGS_COUNT);
+}
+
+#[test]
+fn test_empty_func() {
+    let ir = IR::from_thelan("fn empty_func(){}");
+    let ir = ir.unwrap();
+    let expected = "\
+FUNC empty_func
+.b0:
+ret $r0:<()>
+
+END FUNC empty_func\n";
+    assert_eq!(ir.to_text(), expected);
 }
 
 #[test]
