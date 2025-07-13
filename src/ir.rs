@@ -371,13 +371,13 @@ impl IR {
                         Some(expr) => self.parse_expr(expr, ir_fun, &mut block, ast_fn),
                         None => IRRegId::UNIT,
                     };
-                    let ret = match (&x.kind, is_top_block) {
-                        (ast::ExprKind::Return(..), _) => IROp::Return { value },
-                        (_, true) => IROp::Return { value },
-                        _ => IROp::LocalReturn { value },
+                    let ir_op = if is_top_block || matches!(&x.kind, ast::ExprKind::Return(..)) {
+                        IROp::Return { value }
+                    } else {
+                        IROp::LocalReturn { value }
                     };
 
-                    block.ops.push(ret);
+                    block.ops.push(ir_op);
                     block.type_id = IRTypeId::NEVER;
                     has_branch = true;
                 }
