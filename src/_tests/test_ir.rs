@@ -3,6 +3,8 @@ use crate::{
     ir::{IRCodeBlockId, IROp, IRRegId, IRTypeId},
 };
 
+use pretty_assertions::assert_eq;
+
 #[test]
 fn test_ir() {
     //                        0         1         2         3          4
@@ -54,11 +56,11 @@ fn test_nested_implicit_return() {
     let expected = "\
 FUNC main
 .b0:
-$r1 = call .b1
+$r1 = local.call .b1
 ret $r1
 
 .b1:
-ret $r0:<()>
+local.ret $r0:<()>
 
 END FUNC main\n";
     assert_eq!(ir.to_text(), expected);
