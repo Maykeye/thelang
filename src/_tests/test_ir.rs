@@ -147,3 +147,25 @@ fn test_return_r0() {
     r#impl("fn func(a1: (), a2:()){();();a1;}");
     r#impl("fn func(a1: (), a2:()){();();a2;}");
 }
+
+#[test]
+fn test_nested_block() {
+    let source = "fn main() {{{}}}";
+    let ir = IR::from_thelan(source).unwrap();
+
+    let expected_ir = "\
+FUNC main
+.b0:
+$r2 = local.call .b1
+ret $r2
+
+.b1:
+$r1 = local.call .b2
+local.ret $r1
+
+.b2:
+local.ret $r0:<()>
+END FUNC main\n";
+
+    assert_eq!(ir.to_text(), expected_ir);
+}
