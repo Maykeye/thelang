@@ -115,7 +115,7 @@ impl Display for Operand {
             Label(l) => l.fmt(f),
             CodeBlock(block_id) => write!(f, ".b{}", block_id.0),
             Sized(Byte, reg) if reg.as_ref() == &RAX => "al".fmt(f),
-            Sized(Byte, reg) if reg.as_ref() == &R15 => "r15l".fmt(f),
+            Sized(Byte, reg) if reg.as_ref() == &R15 => "r15b".fmt(f),
             Sized(Byte, offset) if matches!(offset.as_ref(), Operand::Offset(_, _)) => {
                 write!(f, "byte {}", offset)
             }

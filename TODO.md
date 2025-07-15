@@ -1,14 +1,14 @@
 # Compiler Roadmap
 
 ## Immediate
-* Add booleans type
- * [ ] focus on test_load_bool in codegen_nasm64
 * Implement AstTypeId properly
 * Refactor Errors to Enum
  * [x] AST
  * [X] CST
  * [ ] IR
  * [ ] NASM64
+* Add booleans type
+ * [x] focus on test_load_bool in codegen_nasm64
   
 * Add arguments
   * [x] added arguments tests
@@ -20,7 +20,7 @@
   * [x] add IR type for arg
   * [x] add IR regs names
   * [x] stub in nasm64
-  * [ ] bool in nasm64
+  * [x] bool in nasm64
 * Write IR Types into output(?)
 * Add (virtual) register allocation, scope = function(done). 
    * [ ] combine kinds of registers: one operational SSA + one local mem for loading/storing + hardware (for rax, rbx, etc)

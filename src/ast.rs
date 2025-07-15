@@ -680,7 +680,7 @@ impl AST {
                         errors,
                         || AstErrorContext {
                             error_pos: code_block.last_expr_pos(),
-                            kind: AstErrorContextKind::None,
+                            kind: AstErrorContextKind::FunctionReturn,
                         },
                     );
                 }
