@@ -15,7 +15,7 @@ mod test_tools;
 use crate::codegen::CodeGen;
 
 fn main() {
-    let source = " fn main(a:bool) -> bool { a } ";
+    let source = "fn and(a:bool, b:bool) -> bool { a & b } ";
     let tokens = tokenize(source).unwrap();
     let cst = CST::from_tokens(&tokens).unwrap();
     let ast = AST::from_cst(cst).unwrap();

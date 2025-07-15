@@ -1,7 +1,8 @@
 # Compiler Roadmap
 
 ## Immediate
-* Implement AstTypeId properly
+* [ ] Implement bool:and 
+* [ ] make and(x,y) -> x & b func
 * Refactor Errors to Enum
  * [x] AST
  * [X] CST
@@ -9,18 +10,10 @@
  * [ ] NASM64
 * Add booleans type
  * [x] focus on test_load_bool in codegen_nasm64
-  
 * Add arguments
-  * [x] added arguments tests
-  * [x] fix gram1
-  * [x] add cst test for `foo(,); foo(a b,,)` etc (not ast)
-  * [x] fix cst, ast
-  * [x] add ast for using arguments in expr
-  * [x] add IROp for loading args
-  * [x] add IR type for arg
-  * [x] add IR regs names
-  * [x] stub in nasm64
-  * [x] bool in nasm64
+  * [ ] several args 
+  * [ ] x64: load several args via regs(r15-r10? copy sysv?)
+  * [ ] x64: others via stack
 * Write IR Types into output(?)
 * Add (virtual) register allocation, scope = function(done). 
    * [ ] combine kinds of registers: one operational SSA + one local mem for loading/storing + hardware (for rax, rbx, etc)
