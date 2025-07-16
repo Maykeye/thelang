@@ -476,8 +476,40 @@ impl AST {
                 Ok(Expr::new(kind, cst_expr.pos, Some(type_id)))
             }
 
+            cst::NodeKind::And(lhs, rhs) => {
+                let lhs = Self::parse_expr(lhs, vars, errors)?;
+                // TODO: refactor
+                if lhs.type_id != Some(AstTypeId::BOOL) {
+                    errors.push(AstError::TypeConversion(
+                        AstErrorContext {
+                            error_pos: lhs.pos,
+                            kind: AstErrorContextKind::BinOp(TokenKind::Ampersand),
+                        },
+                        lhs.type_id.unwrap_or(AstTypeId::NEVER),
+                        AstTypeId::BOOL,
+                    ));
+                    return Err(());
+                }
+                let rhs = Self::parse_expr(rhs, vars, errors)?;
+                // TODO: refactor
+                if rhs.type_id != Some(AstTypeId::BOOL) {
+                    errors.push(AstError::TypeConversion(
+                        AstErrorContext {
+                            error_pos: rhs.pos,
+                            kind: AstErrorContextKind::BinOp(TokenKind::Ampersand),
+                        },
+                        rhs.type_id.unwrap_or(AstTypeId::NEVER),
+                        AstTypeId::BOOL,
+                    ));
+                    return Err(());
+                }
+                let kind = ExprKind::And(Box::new(lhs), Box::new(rhs));
+                Ok(Expr::new(kind, cst_expr.pos, Some(AstTypeId::BOOL)))
+            }
+
             cst::NodeKind::Invert(inner) => {
                 let inner = Self::parse_expr(inner, vars, errors)?;
+                // TODO: refactor
                 if inner.type_id != Some(AstTypeId::BOOL) {
                     errors.push(AstError::TypeConversion(
                         AstErrorContext {

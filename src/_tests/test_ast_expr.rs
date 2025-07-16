@@ -72,6 +72,15 @@ fn test_and_requires_bool() {
 }
 
 #[test]
+fn test_and_chain_ok() {
+    unimplemented!();
+}
+#[test]
+fn test_and_chain_err() {
+    unimplemented!();
+}
+
+#[test]
 fn test_invert_is_not_unit_type() {
     let ast = ast_from_text("fn inv(x: bool) {\n!x}");
     let err = ast.unwrap_err().1;

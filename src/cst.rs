@@ -65,6 +65,7 @@ pub enum NodeKind {
     CodeBlock(CodeBlock),
     Return(Box<Node>),
     Invert(Box<Node>),
+    And(Box<Node>, Box<Node>),
     Identifier(String),
     Unit,
 }
@@ -97,6 +98,12 @@ impl Node {
     pub fn new_invert(inner: Node, pos: Pos) -> Node {
         Self {
             kind: NodeKind::Invert(Box::new(inner)),
+            pos,
+        }
+    }
+    pub fn new_and(lhs: Node, rhs: Node, pos: Pos) -> Node {
+        Self {
+            kind: NodeKind::And(Box::new(lhs), Box::new(rhs)),
             pos,
         }
     }
@@ -329,10 +336,43 @@ impl CST {
         Self::parse_expr_term(toks, i)
     }
 
+    /// EXPR_BINARY ::= EXPR_UNARY [ `&` EXPR_UNARY ]
+    fn parse_expr_binary(toks: &Tokens, i: usize) -> OptExprParsingResult {
+        let (mut i, res) = if let Some(x) = Self::parse_expr_unary(toks, i) {
+            x
+        } else {
+            return None;
+        };
+        let lhs = if let Ok(x) = res {
+            x
+        } else {
+            return Some((i, res));
+        };
+
+        let mut ret_expr = lhs;
+
+        while toks.kind_eq(i, TokenKind::Ampersand) {
+            let (new_i, res) = if let Some(x) = Self::parse_expr_unary(toks, i + 1) {
+                x
+            } else {
+                break;
+            };
+            let rhs = if let Ok(x) = res {
+                x
+            } else {
+                return Some((new_i, res));
+            };
+            ret_expr = Node::new_and(ret_expr, rhs, toks[i].pos);
+            i = new_i;
+        }
+
+        Some((i, Ok(ret_expr)))
+    }
+
     /// Parse an expression
     /// EXPR ::= EXPR_UNARY
     fn parse_expr_opt(toks: &Tokens, i: usize) -> OptExprParsingResult {
-        Self::parse_expr_unary(toks, i)
+        Self::parse_expr_binary(toks, i)
     }
 
     /// Wrapper around `parse_expr_opt`, but the expression is required
