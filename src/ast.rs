@@ -221,6 +221,20 @@ pub struct AstErrorContext {
     error_pos: Pos,
     kind: AstErrorContextKind,
 }
+impl AstErrorContext {
+    fn new_unop(pos: Pos, token_kind: TokenKind) -> AstErrorContext {
+        AstErrorContext {
+            error_pos: pos,
+            kind: AstErrorContextKind::UnaryOp(token_kind),
+        }
+    }
+    fn new_binop(pos: Pos, token_kind: TokenKind) -> AstErrorContext {
+        AstErrorContext {
+            error_pos: pos,
+            kind: AstErrorContextKind::BinOp(token_kind),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AstError {
@@ -478,26 +492,18 @@ impl AST {
 
             cst::NodeKind::And(lhs, rhs) => {
                 let lhs = Self::parse_expr(lhs, vars, errors)?;
-                // TODO: refactor
                 if lhs.type_id != Some(AstTypeId::BOOL) {
                     errors.push(AstError::TypeConversion(
-                        AstErrorContext {
-                            error_pos: lhs.pos,
-                            kind: AstErrorContextKind::BinOp(TokenKind::Ampersand),
-                        },
+                        AstErrorContext::new_binop(lhs.pos, TokenKind::Ampersand),
                         lhs.type_id.unwrap_or(AstTypeId::NEVER),
                         AstTypeId::BOOL,
                     ));
                     return Err(());
                 }
                 let rhs = Self::parse_expr(rhs, vars, errors)?;
-                // TODO: refactor
                 if rhs.type_id != Some(AstTypeId::BOOL) {
                     errors.push(AstError::TypeConversion(
-                        AstErrorContext {
-                            error_pos: rhs.pos,
-                            kind: AstErrorContextKind::BinOp(TokenKind::Ampersand),
-                        },
+                        AstErrorContext::new_binop(lhs.pos, TokenKind::Ampersand),
                         rhs.type_id.unwrap_or(AstTypeId::NEVER),
                         AstTypeId::BOOL,
                     ));
@@ -509,13 +515,9 @@ impl AST {
 
             cst::NodeKind::Invert(inner) => {
                 let inner = Self::parse_expr(inner, vars, errors)?;
-                // TODO: refactor
                 if inner.type_id != Some(AstTypeId::BOOL) {
                     errors.push(AstError::TypeConversion(
-                        AstErrorContext {
-                            error_pos: cst_expr.pos,
-                            kind: AstErrorContextKind::UnaryOp(TokenKind::Exclamation),
-                        },
+                        AstErrorContext::new_unop(cst_expr.pos, TokenKind::Exclamation),
                         inner.type_id.unwrap_or(AstTypeId::NEVER),
                         AstTypeId::BOOL,
                     ));
