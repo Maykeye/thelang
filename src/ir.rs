@@ -95,6 +95,13 @@ pub enum IROp {
         dest: IRRegId,
     },
 
+    /// And boolean value
+    And {
+        lhs: IRRegId,
+        rhs: IRRegId,
+        dest: IRRegId,
+    },
+
     /// Load argument
     LoadArg {
         arg: IRRegId,
@@ -265,10 +272,17 @@ impl IR {
                         IROp::LdConstBool { value, dest } => {
                             format!("{} = ld.const.b {}", func.format_reg_name(*dest), value)
                         }
+                        // Boolean operations
                         IROp::Invert { value, dest } => format!(
                             "{} = invert.bool {}",
                             func.format_reg_name(*dest),
                             func.format_reg_name(*value)
+                        ),
+                        IROp::And { lhs, rhs, dest } => format!(
+                            "{} = and.bool {}, {}",
+                            func.format_reg_name(*dest),
+                            func.format_reg_name(*lhs),
+                            func.format_reg_name(*rhs)
                         ),
                     };
                     s.push_str(&ins);
@@ -402,7 +416,9 @@ impl IR {
                     last_reg = Some(IRRegId::UNIT)
                     // Unit() on top-expr(stmt) level is essentially nop.
                 }
-                ast::ExprKind::Invert(_) | ast::ExprKind::Argument(_) => {
+                ast::ExprKind::Argument(_)
+                | ast::ExprKind::Invert(_)
+                | ast::ExprKind::And(_, _) => {
                     let reg = self.parse_expr(x, ir_fun, &mut block, ast_fn);
                     last_reg = Some(reg);
                 }

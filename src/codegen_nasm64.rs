@@ -365,6 +365,9 @@ impl CodeGenNasm64 {
                     }
                 }
 
+                IROp::And { lhs, rhs, dest } => {
+                    unimplemented!();
+                }
                 IROp::Invert { value, dest } => {
                     unimplemented!();
                 }

@@ -4,7 +4,10 @@
 * [ ] Implement bool:and 
 * [ ] make and(x,y) -> x & b func
 * Add booleans type
- * [x] focus on test_load_bool in codegen_nasm64
+ * [!] add &and to IR
+ * [ ] add &and to x64
+ * [ ] add !invert to x64
+ * [x] add !invert to IR
 * Refactor Errors to Enum
  * [x] Lexer
  * [x] AST

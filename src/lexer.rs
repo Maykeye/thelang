@@ -86,6 +86,7 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, LexerError> {
             ':' => Some(TokenKind::Colon),
             ',' => Some(TokenKind::Comma),
             '!' => Some(TokenKind::Exclamation),
+            '&' => Some(TokenKind::Ampersand),
             _ => None,
         };
 

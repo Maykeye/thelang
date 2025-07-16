@@ -192,17 +192,26 @@ fn test_empty_non_raw_ident() {
 
 #[test]
 fn test_gram1() {
-    let toks = tokenize("\n({});:,!-").unwrap();
-    assert_eq!(toks[0], Token::new(TokenKind::LParen, Pos::new(2, 1)));
-    assert_eq!(toks[1], Token::new(TokenKind::LCurly, Pos::new(2, 2)));
-    assert_eq!(toks[2], Token::new(TokenKind::RCurly, Pos::new(2, 3)));
-    assert_eq!(toks[3], Token::new(TokenKind::RParen, Pos::new(2, 4)));
-    assert_eq!(toks[4], Token::new(TokenKind::Semi, Pos::new(2, 5)));
-    assert_eq!(toks[5], Token::new(TokenKind::Colon, Pos::new(2, 6)));
-    assert_eq!(toks[6], Token::new(TokenKind::Comma, Pos::new(2, 7)));
-    assert_eq!(toks[7], Token::new(TokenKind::Exclamation, Pos::new(2, 8)));
-    assert_eq!(toks[8], Token::new(TokenKind::Minus, Pos::new(2, 9)));
-    assert_eq!(toks.len(), 9);
+    let got_toks = tokenize("\n({});:,!-&").unwrap();
+    let exp_toks = [
+        TokenKind::LParen,
+        TokenKind::LCurly,
+        TokenKind::RCurly,
+        TokenKind::RParen,
+        TokenKind::Semi,
+        TokenKind::Colon,
+        TokenKind::Comma,
+        TokenKind::Exclamation,
+        TokenKind::Minus,
+        TokenKind::Ampersand,
+    ];
+    for (n, token_kind) in exp_toks.iter().enumerate() {
+        assert_eq!(
+            got_toks.get(n),
+            Some(&Token::new(token_kind.clone(), Pos::new(2, 1 + n)))
+        );
+    }
+    assert_eq!(got_toks.len(), exp_toks.len());
 }
 
 #[test]

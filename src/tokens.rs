@@ -6,6 +6,8 @@ pub enum TokenKind {
     Fn,
     /// Identifier of anything
     Identifier(String),
+    /// Binary-and or address-of
+    Ampersand,
     /// Parenthisis
     LParen,
     RParen,

@@ -68,6 +68,8 @@ pub enum ExprKind {
     BlockReturn(Option<Box<Expr>>),
     /// Boolean op: invert. ~x
     Invert(Box<Expr>),
+    /// Boolean op: and. x & y
+    And(Box<Expr>, Box<Expr>),
     /// Code block
     CodeBlock(CodeBlock),
     /// Usage argument named ARGNAME
