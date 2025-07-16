@@ -55,14 +55,14 @@ fn test_and_with_unary() {
 #[test]
 fn test_and_requires_bool() {
     fn test(expr: &str, err_pos: Pos) {
-        let source = "fn and(u: (), b: bool)->bool{".to_string();
+        let source = "fn and(u: (), b: bool)->bool{\n".to_string();
         let source = source + expr + "\n}";
         let ast = ast_from_text(&source);
         let err = ast.unwrap_err().1;
 
         assert_eq!(err.len(), 1);
         let (ctx, from, to) = unwrap_variant!(&err[0], AstError::TypeConversion, 3);
-        assert_eq!(ctx.error_pos, err_pos);
+        assert_eq!(ctx.error_pos, err_pos, "source:\n{source}");
         assert_eq!(ctx.kind, AstErrorContextKind::BinOp(TokenKind::Ampersand));
         assert_eq!(from, &AstTypeId::UNIT);
         assert_eq!(to, &AstTypeId::BOOL);

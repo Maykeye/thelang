@@ -503,7 +503,7 @@ impl AST {
                 let rhs = Self::parse_expr(rhs, vars, errors)?;
                 if rhs.type_id != Some(AstTypeId::BOOL) {
                     errors.push(AstError::TypeConversion(
-                        AstErrorContext::new_binop(lhs.pos, TokenKind::Ampersand),
+                        AstErrorContext::new_binop(rhs.pos, TokenKind::Ampersand),
                         rhs.type_id.unwrap_or(AstTypeId::NEVER),
                         AstTypeId::BOOL,
                     ));
