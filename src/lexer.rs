@@ -106,7 +106,12 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
             continue;
         }
 
-        return Err(format!("Unknown token around {:?}", cur.pos));
+        // TODO: include better token info
+        let ch = cur.peekz();
+        return Err(format!(
+            "Unknown token around {:?}: starts with `{}`",
+            cur.pos, ch
+        ));
     }
 
     Ok(tokens)

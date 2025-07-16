@@ -2,7 +2,7 @@ use crate::Token;
 use crate::lexer::{read_keyword_or_identifier, skip_ws, tokenize};
 use crate::tokens::Pos;
 use crate::{CharPos, TokenKind};
-
+use pretty_assertions::assert_eq;
 #[test]
 fn test_advance_on_empty() {
     let src = "";
@@ -251,4 +251,15 @@ fn test_tokenize_keywords() {
     assert_eq!(toks[0].pos, Pos::new(1, 1));
     assert_eq!(&toks[1].kind, &TokenKind::Return);
     assert_eq!(toks[1].pos, Pos::new(2, 3));
+}
+
+#[test]
+fn test_unknown_token() {
+    let error_message = tokenize(" 猫█").unwrap_err();
+    let expected_error = format!(
+        "Unknown token around {:?}: starts with `{}`",
+        Pos::new(1, 3),
+        '█'
+    );
+    assert_eq!(error_message, expected_error);
 }
