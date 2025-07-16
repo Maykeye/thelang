@@ -494,7 +494,7 @@ impl IR {
         let tokens = match crate::lexer::tokenize(&source) {
             Ok(tokens) => tokens,
             Err(err) => {
-                return Err(vec![err]);
+                return Err(vec![format!("{err:?}")]);
             }
         };
 

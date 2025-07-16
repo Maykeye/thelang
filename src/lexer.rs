@@ -1,5 +1,6 @@
 /// Skip whitespace(//comment line included into whitespace)
 use crate::CharPos;
+use crate::tokens::Pos;
 use crate::{Token, TokenKind};
 fn skip_ws(cur: &mut CharPos) {
     loop {
@@ -49,7 +50,12 @@ fn read_keyword_or_identifier(cur: &mut CharPos) -> String {
     s
 }
 
-pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
+#[derive(Debug, PartialEq, Eq)]
+pub enum LexerError {
+    UnknownToken { pos: Pos, ch: char },
+}
+
+pub fn tokenize(text: &str) -> Result<Vec<Token>, LexerError> {
     let mut tokens = vec![];
     let mut cur = CharPos::from_str(text);
 
@@ -107,11 +113,10 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, String> {
         }
 
         // TODO: include better token info
-        let ch = cur.peekz();
-        return Err(format!(
-            "Unknown token around {:?}: starts with `{}`",
-            cur.pos, ch
-        ));
+        return Err(LexerError::UnknownToken {
+            pos: cur.pos,
+            ch: cur.peekz(),
+        });
     }
 
     Ok(tokens)

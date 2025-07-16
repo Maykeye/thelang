@@ -1,16 +1,16 @@
 # Compiler Roadmap
 
 ## Immediate
-* Refactor Errors to Enum
- * [!] Lexer
- * [x] AST
- * [X] CST
- * [ ] IR
- * [ ] NASM64
 * [ ] Implement bool:and 
 * [ ] make and(x,y) -> x & b func
 * Add booleans type
  * [x] focus on test_load_bool in codegen_nasm64
+* Refactor Errors to Enum
+ * [x] Lexer
+ * [x] AST
+ * [X] CST
+ * [ ] IR
+ * [ ] NASM64
 * Add arguments
   * [ ] several args 
   * [ ] x64: load several args via regs(r15-r10? copy sysv?)

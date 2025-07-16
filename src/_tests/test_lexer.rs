@@ -1,5 +1,5 @@
 use crate::Token;
-use crate::lexer::{read_keyword_or_identifier, skip_ws, tokenize};
+use crate::lexer::{LexerError, read_keyword_or_identifier, skip_ws, tokenize};
 use crate::tokens::Pos;
 use crate::{CharPos, TokenKind};
 use pretty_assertions::assert_eq;
@@ -255,11 +255,10 @@ fn test_tokenize_keywords() {
 
 #[test]
 fn test_unknown_token() {
-    let error_message = tokenize(" 猫█").unwrap_err();
-    let expected_error = format!(
-        "Unknown token around {:?}: starts with `{}`",
-        Pos::new(1, 3),
-        '█'
-    );
-    assert_eq!(error_message, expected_error);
+    let lexer_error = tokenize(" 猫█").unwrap_err();
+    let expected_error = LexerError::UnknownToken {
+        pos: Pos::new(1, 3),
+        ch: '█',
+    };
+    assert_eq!(lexer_error, expected_error);
 }
