@@ -73,11 +73,38 @@ fn test_and_requires_bool() {
 
 #[test]
 fn test_and_chain_ok() {
-    unimplemented!();
+    // a&b&c&d = ((A&B) & C) & d
+    let source =
+        "fn and_chain_ok(a: bool, b: bool, c: bool, d:bool)->bool{\na&b&c&d\n}".to_string();
+    let ast = ast_from_text(&source).unwrap();
+    let func = ast.functions.get("and_chain_ok").unwrap();
+    let body = func.body.as_ref().unwrap();
+    assert_eq!(body.exprs.len(), 1);
+    let (lhs, rhs) = unwrap_variant!(&body.exprs[0].kind, ExprKind::And, 2);
+    let rhs = unwrap_variant!(&rhs.kind, ExprKind::Argument);
+    assert_eq!(rhs, "d");
+    let (lhs, rhs) = unwrap_variant!(&lhs.kind, ExprKind::And, 2);
+    let rhs = unwrap_variant!(&rhs.kind, ExprKind::Argument);
+    assert_eq!(rhs, "c");
+    let (lhs, rhs) = unwrap_variant!(&lhs.kind, ExprKind::And, 2);
+    let rhs = unwrap_variant!(&rhs.kind, ExprKind::Argument);
+    assert_eq!(rhs, "b");
+    let lhs = unwrap_variant!(&lhs.kind, ExprKind::Argument);
+    assert_eq!(lhs, "a");
 }
 #[test]
 fn test_and_chain_err() {
-    unimplemented!();
+    let source = "fn and_chain_err(a: bool, b: bool, c: (), d:bool)->bool{\na&b&c&d\n}".to_string();
+    let (ast, err) = ast_from_text(&source).unwrap_err();
+    let func = ast.functions.get("and_chain_err").unwrap();
+    let body = func.body.as_ref();
+    assert!(body.is_none());
+    assert_eq!(err.len(), 1);
+    let (ctx, from, to) = unwrap_variant!(&err[0], AstError::TypeConversion, 3);
+    assert_eq!(ctx.error_pos, Pos::new(2, 5));
+    assert_eq!(ctx.kind, AstErrorContextKind::BinOp(TokenKind::Ampersand));
+    assert_eq!(from, &AstTypeId::UNIT);
+    assert_eq!(to, &AstTypeId::BOOL);
 }
 
 #[test]
